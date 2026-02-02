@@ -1,0 +1,2648 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS ADMIN | 总控</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        /* ... */
+        * {
+            box-sizing: border-box;
+        }
+        
+        body { 
+            margin: 0; 
+            background: #f8fafc; 
+            color: #334155; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            display: flex; 
+            height: 100vh; 
+            overflow: hidden; 
+        }
+        
+        .sidebar { 
+            width: 240px; 
+            background: #ffffff; 
+            border-right: 1px solid #e2e8f0; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            flex-shrink: 0; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            z-index: 100;
+        }
+        
+        .logo { 
+            font-size: 20px; 
+            font-weight: bold; 
+            color: #0ea5e9; 
+            margin-bottom: 40px; 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+            padding: 10px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .menu-item { 
+            padding: 12px 15px; 
+            cursor: pointer; 
+            border-radius: 8px; 
+            margin-bottom: 5px; 
+            color: #64748b; 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            transition: 0.2s; 
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .menu-item:hover, .menu-item.active { 
+            background: #f1f5f9; 
+            color: #0f172a; 
+        }
+        
+        .menu-item i {
+            font-size: 18px;
+            width: 24px;
+        }
+        
+        .main { 
+            flex: 1; 
+            padding: 30px; 
+            overflow-y: auto; 
+            background: #f8fafc; 
+        }
+        
+        .page { 
+            display: none; 
+            animation: fadeIn 0.3s ease;
+        } 
+        
+        .page.active { 
+            display: block; 
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .card { 
+            background: #ffffff; 
+            border-radius: 12px; 
+            padding: 25px; 
+            border: 1px solid #e2e8f0; 
+            margin-bottom: 20px; 
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); 
+        }
+        
+        h2 { 
+            margin-top: 0; 
+            color: #0ea5e9; 
+            font-size: 18px; 
+            border-bottom: 1px solid #e2e8f0; 
+            padding-bottom: 10px; 
+        }
+        
+        input, textarea, select { 
+            width: 100%; 
+            background: #ffffff; 
+            border: 1px solid #cbd5e1; 
+            color: #334155; 
+            padding: 12px; 
+            border-radius: 8px; 
+            margin: 5px 0 15px 0; 
+            box-sizing: border-box; 
+            font-size: 14px;
+            transition: 0.2s;
+        }
+        
+        input:focus, textarea:focus, select:focus { 
+            border-color: #0ea5e9; 
+            outline: none; 
+            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1); 
+        }
+        
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%236b7280' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 16px;
+            padding-right: 40px;
+            cursor: pointer;
+        }
+        
+        button { 
+            background: linear-gradient(to right, #0ea5e9, #3b82f6); 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 8px; 
+            color: white; 
+            font-weight: 600; 
+            cursor: pointer; 
+            transition: 0.3s; 
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        button:hover { 
+            opacity: 0.9; 
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2);
+        } 
+        
+        button:disabled { 
+            opacity: 0.5; 
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: #64748b;
+        }
+        
+        .btn-success {
+            background: #10b981;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+        }
+        
+        .btn-warning {
+            background: #f59e0b;
+        }
+        
+        .chat-list-item { 
+            padding: 12px; 
+            border-bottom: 1px solid #e2e8f0; 
+            cursor: pointer; 
+            font-size: 14px; 
+            transition: 0.2s;
+        }
+        
+        .chat-list-item:hover { 
+            background: #f1f5f9; 
+        }
+        
+        .chat-list-item.active {
+            background: #e0f2fe;
+            border-left: 3px solid #0ea5e9;
+        }
+        
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 10px; 
+            background: white; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            border: 1px solid #e2e8f0;
+        }
+        
+        th, td { 
+            text-align: left; 
+            padding: 14px; 
+            border-bottom: 1px solid #e2e8f0; 
+            font-size: 13px; 
+            vertical-align: top; 
+        }
+        
+        th { 
+            background: #f8fafc; 
+            color: #64748b; 
+            font-weight: 600; 
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+        
+        tr:hover {
+            background: #f8fafc;
+        }
+        
+        .tag { 
+            padding: 4px 8px; 
+            border-radius: 6px; 
+            font-size: 12px; 
+            font-weight: 500;
+            display: inline-block;
+        }
+        
+        .tag.paid { 
+            background: rgba(16,185,129,0.1); 
+            color: #047857; 
+        }
+        
+        .tag.wait { 
+            background: rgba(245,158,11,0.1); 
+            color: #b45309; 
+        }
+        
+        .tag.cancelled {
+            background: rgba(100, 116, 139, 0.1);
+            color: #475569;
+        }
+        
+@media (max-width: 768px) {
+            body { 
+                flex-direction: column; 
+                overflow: auto; 
+                height: auto; 
+                padding-bottom: 70px; 
+            }
+            
+           .sidebar {
+                position: fixed;
+                bottom: 30px; /* 距离底部悬浮 */
+                left: 50%;
+                transform: translateX(-50%); /* 绝对居中 */
+                width: 95%;
+                max-width: 500px;
+                height: 72px; /* 高度适中 */
+                
+                background: rgba(255, 255, 255, 0.85); /* 半透明背景 */
+                backdrop-filter: blur(20px); /* 毛玻璃效果 */
+                -webkit-backdrop-filter: blur(20px);
+                
+                border: 1px solid rgba(255, 255, 255, 0.5);
+                border-radius: 100px; /* 胶囊形状 */
+                
+                /* 核心修正：强制横向排列 */
+                display: flex !important;
+                flex-direction: row !important;
+                justify-content: space-between;
+                align-items: center;
+                
+                padding: 0 10px;
+                z-index: 9999;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.15); /* 悬浮阴影 */
+            }
+
+            .logo {
+                display: none;
+            }
+
+            .menu-item {
+                font-size: 10px; /* 字体小一点以容纳6个 */
+                padding: 0;
+                height: 100%;
+                flex: 1; /* 6个图标平分宽度 */
+                border-radius: 0;
+                
+                /* 图标和文字垂直排列 */
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                
+                gap: 3px;
+                background: transparent !important;
+                color: #8e8e93; /* iOS 默认灰 */
+                margin: 0;
+                white-space: nowrap;
+            }
+
+            .menu-item i {
+                font-size: 24px; /* 图标大一点 */
+                width: auto;
+                margin-bottom: 0;
+                display: block;
+            }
+
+            .menu-item.active {
+                color: #007aff; /* iOS 激活蓝 */
+                background: transparent !important;
+                font-weight: 500;
+                transform: translateY(-2px); /* 选中微动效 */
+                transition: all 0.2s;
+            }
+            
+            .menu-item i { 
+                font-size: 20px; 
+                width: auto;
+                margin-bottom: 2px;
+                display: block;
+            }
+            
+            .main { 
+                padding: 15px; 
+            }
+
+            /* 订单列表卡片化适配 (保持不变) */
+            #order-table thead { display: none; }
+            #order-table tbody, #order-table tr, #order-table td { display: block; width: 100%; }
+            #order-table tr {
+                background: white;
+                margin-bottom: 15px;
+                border-radius: 12px;
+                border: 1px solid #e2e8f0;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                padding: 10px;
+            }
+            #order-table td {
+                padding: 8px 0;
+                border-bottom: 1px dashed #f1f5f9;
+                text-align: left;
+            }
+            #order-table td:last-child { border-bottom: none; }
+        }
+
+        .hire-item { 
+            border: 1px solid #e2e8f0; 
+            padding: 15px; 
+            margin-bottom: 15px; 
+            border-radius: 8px; 
+            position: relative; 
+            background: #f8fafc; 
+        }
+        
+        .hire-del { 
+            position: absolute; 
+            top: 10px; 
+            right: 10px; 
+            color: #ef4444; 
+            cursor: pointer; 
+            background: #fee2e2;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        
+        .hire-del:hover {
+            background: #fecaca;
+        }
+        
+        .img-list { 
+            display: flex; 
+            gap: 10px; 
+            flex-wrap: wrap; 
+            margin-top: 5px; 
+        }
+        
+        .img-preview-box { 
+            width: 80px; 
+            height: 80px; 
+            position: relative; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            border: 1px solid #e2e8f0; 
+        }
+        
+        .img-preview-box img { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+        }
+        
+        .img-preview-remove {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .img-preview-remove:hover {
+            background: #dc2626;
+        }
+
+        .modal-overlay { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: rgba(0,0,0,0.5); 
+            z-index: 9999; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            padding: 20px;
+        }
+        
+        .prod-row { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            background: #f8fafc; 
+            padding: 12px 15px; 
+            margin-bottom: 8px; 
+            border-radius: 8px; 
+            border: 1px solid #e2e8f0; 
+            transition: 0.2s;
+        }
+        
+        .prod-row:hover {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+        }
+        
+        .action-btn { 
+            padding: 6px 12px; 
+            font-size: 12px; 
+            margin-left: 8px; 
+            cursor: pointer; 
+            border-radius: 6px; 
+            border: none; 
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .btn-edit { 
+            background: #3b82f6; 
+            color: white; 
+        }
+        
+        .btn-del { 
+            background: #ef4444; 
+            color: white; 
+        }
+        
+        .btn-pin { 
+            background: #eab308; 
+            color: #000; 
+        }
+        
+       /* 聊天窗口 Telegram 风格重构 */
+        .chat-container { 
+            position: relative;
+            height: calc(100vh - 100px); /* 撑满屏幕高度 */
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+        }
+        
+        .chat-users-panel { 
+            width: 320px;
+            height: 100%;
+            overflow-y: auto;
+            background: #ffffff; 
+            border-right: 1px solid #e2e8f0;
+            flex-shrink: 0;
+            z-index: 10;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .chat-main-panel { 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            background: #f0f2f5;
+            height: 100%;
+            position: relative;
+            min-width: 0;
+            z-index: 20;
+        }
+
+        .chat-header {
+            height: 60px;
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .chat-back-btn {
+            display: none;
+            font-size: 24px;
+            color: #334155;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .chat-messages { 
+            flex: 1; 
+            padding: 20px; 
+            overflow-y: auto; 
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            scroll-behavior: smooth;
+        }
+        
+        .chat-input-container {
+            padding: 10px 15px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .chat-input-container input {
+            margin: 0;
+            background: #f1f5f9;
+            border: none;
+            border-radius: 20px;
+            padding: 12px 15px;
+        }
+
+        .chat-input-container input:focus {
+            background: white;
+            box-shadow: 0 0 0 2px #3b82f6;
+        }
+
+        .chat-item {
+            padding: 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #f8fafc;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: 0.2s;
+        }
+        .chat-item:hover { background: #f8fafc; }
+        .chat-item.active { background: #eff6ff; border-left: 3px solid #3b82f6; }
+
+        .chat-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .chat-info { flex: 1; min-width: 0; }
+        .chat-top { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .chat-name { font-weight: 600; color: #1e293b; font-size: 15px; }
+        .chat-time { font-size: 11px; color: #94a3b8; }
+        .chat-preview { font-size: 13px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+        .chat-badge { background: #ef4444; color: white; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: bold; min-width: 20px; text-align: center; }
+
+        .msg-row { display: flex; width: 100%; }
+        .msg-row.user { justify-content: flex-start; }
+        .msg-row.admin { justify-content: flex-end; }
+
+        .msg-bubble {
+            max-width: 75%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+            position: relative;
+            word-wrap: break-word;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .msg-row.user .msg-bubble { background: white; color: #1e293b; border-top-left-radius: 2px; }
+        .msg-row.admin .msg-bubble { background: #3b82f6; color: white; border-top-right-radius: 2px; }
+        .msg-time { font-size: 10px; text-align: right; margin-top: 4px; opacity: 0.7; }
+
+        @media (max-width: 768px) {
+            .chat-container {
+                height: calc(100vh - 80px);
+                border: none;
+                border-radius: 0;
+            }
+            .chat-users-panel {
+                width: 100%;
+                position: absolute;
+                left: 0; top: 0; bottom: 0;
+                transform: translateX(0);
+            }
+            .chat-main-panel {
+                width: 100%;
+                position: absolute;
+                left: 0; top: 0; bottom: 0;
+                transform: translateX(100%);
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .chat-container.active .chat-users-panel { transform: translateX(-20%); }
+            .chat-container.active .chat-main-panel { transform: translateX(0); }
+            .chat-back-btn { display: block; }
+        }
+        
+        /* 二维码上传样式 */
+        .qrcode-upload { 
+            background: #f0f9ff; 
+            padding: 15px; 
+            border-radius: 10px; 
+            margin-top: 10px; 
+            border: 1px solid #bae6fd; 
+        }
+        
+        .qrcode-preview { 
+            max-width: 150px; 
+            height: auto; 
+            margin-top: 10px; 
+            border-radius: 8px; 
+            border: 1px solid #e2e8f0; 
+        }
+        
+        /* 用户列表样式 */
+       .user-list {
+            /* 手机端适配：总高度减去顶部导航和搜索栏的大概高度 */
+            height: calc(100vh - 220px); 
+            overflow-y: auto;
+            /* 增加底部内边距，防止最后一个元素被遮挡 */
+            padding-bottom: 50px; 
+        }
+        
+        .user-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .user-item:hover {
+            background: #f8fafc;
+        }
+        
+        .user-info {
+            flex: 1;
+        }
+        
+        .user-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #64748b;
+        }
+        
+        .user-contact {
+            font-weight: 500;
+            color: #334155;
+            margin-bottom: 4px;
+        }
+        
+        .user-balance {
+            color: #10b981;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .user-date {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+        
+        /* 通知样式 */
+        .admin-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 10000;
+            max-width: 400px;
+            animation: slideInRight 0.3s ease;
+            border-left: 4px solid #0ea5e9;
+        }
+        
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .admin-notification.success {
+            border-left-color: #10b981;
+        }
+        
+        .admin-notification.warning {
+            border-left-color: #f59e0b;
+        }
+        
+        .admin-notification.danger {
+            border-left-color: #ef4444;
+        }
+        
+        .admin-notification-icon {
+            font-size: 20px;
+        }
+        
+        .admin-notification.success .admin-notification-icon {
+            color: #10b981;
+        }
+        
+        .admin-notification.warning .admin-notification-icon {
+            color: #f59e0b;
+        }
+        
+        .admin-notification.danger .admin-notification-icon {
+            color: #ef4444;
+        }
+        
+        .admin-notification-content {
+            flex: 1;
+        }
+        
+        .admin-notification-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #334155;
+        }
+        
+        .admin-notification-message {
+            font-size: 13px;
+            color: #64748b;
+            line-height: 1.4;
+        }
+        
+        .admin-notification-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+        
+        .admin-notification-close:hover {
+            background: #f3f4f6;
+            color: #64748b;
+        }
+        
+        /* 文件上传美化 */
+        .file-upload {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+        
+        .file-upload input[type="file"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        
+        .file-upload-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 12px;
+            background: #f8fafc;
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+            color: #64748b;
+            cursor: pointer;
+            transition: 0.2s;
+            text-align: center;
+        }
+        
+        .file-upload-label:hover {
+            background: #f1f5f9;
+            border-color: #94a3b8;
+        }
+        
+        .file-upload-label i {
+            font-size: 24px;
+        }
+        
+        /* 统计卡片 */
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #0ea5e9;
+            margin: 10px 0;
+        }
+        
+        .stat-label {
+            font-size: 13px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* 加载动画 */
+        .loader {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e2e8f0;
+            border-top-color: #0ea5e9;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        /* 分页器 */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 30px;
+            padding: 20px 0;
+        }
+        
+        .page-btn {
+            padding: 8px 16px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            color: #334155;
+            font-size: 14px;
+            transition: 0.2s;
+        }
+        
+        .page-btn:hover:not(.active):not(:disabled) {
+            background: #f3f4f6;
+            border-color: #cbd5e1;
+        }
+        
+        .page-btn.active {
+            background: #0ea5e9;
+            color: white;
+            border-color: #0ea5e9;
+        }
+        
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* 工具提示 */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            background-color: #334155;
+            color: white;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px 12px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+<!-- 通知容器 -->
+<div id="notification-container" style="position:fixed; top:20px; right:20px; z-index:10000;"></div>
+
+<!-- 登录模态框 -->
+<div id="login-modal" class="modal-overlay">
+    <div class="card" style="width: 350px; text-align: center;">
+        <h2 style="border:none; margin-top: 0;">管理员登录</h2>
+        <div class="form-group">
+            <input id="admin-user" placeholder="用户名">
+        </div>
+        <div class="form-group">
+            <input id="admin-pass" type="password" placeholder="密码">
+        </div>
+        <button onclick="adminLogin()" style="width: 100%;">登录</button>
+    </div>
+</div>
+
+<!-- 主界面 -->
+<div class="sidebar">
+    <div class="logo"><i class="ri-command-line"></i> NEXUS Admin</div>
+    <div class="menu-item active" onclick="nav('dash')"><i class="ri-dashboard-line"></i> 仪表盘</div>
+    <div class="menu-item" onclick="nav('prod')"><i class="ri-shopping-cart-2-line"></i> 商品管理</div>
+    <div class="menu-item" onclick="nav('order')"><i class="ri-list-check"></i> 订单管理</div>
+    <div class="menu-item" onclick="nav('users')"><i class="ri-user-line"></i> 用户管理</div>
+  <div class="menu-item" onclick="nav('hire')"><i class="ri-user-add-line"></i> 招聘管理</div>
+    <div class="menu-item" onclick="nav('funds')"><i class="ri-money-cny-box-line"></i> 资金明细</div>
+    <div class="menu-item" onclick="nav('chat')">
+        <i class="ri-chat-1-line"></i> 客服聊天
+        <span id="chat-badge-total" class="nav-badge">0</span>
+    </div>
+</div>
+
+<div class="main">
+    <!-- 仪表盘 -->
+    <div id="dash" class="page active">
+        <div class="stats-container">
+            <div class="stat-card">
+                <div class="stat-label">今日订单</div>
+                <div class="stat-value" id="today-orders">0</div>
+                <div style="font-size:12px; color:#94a3b8;" id="today-amount">金额: 0 USDT</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">待处理订单</div>
+                <div class="stat-value" id="pending-orders">0</div>
+                <div style="font-size:12px; color:#94a3b8;">等待支付/处理</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">总用户数</div>
+                <div class="stat-value" id="total-users">0</div>
+                <div style="font-size:12px; color:#94a3b8;">注册用户</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">商品总数</div>
+                <div class="stat-value" id="total-products">0</div>
+                <div style="font-size:12px; color:#94a3b8;">在售商品</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>公告设置</h2>
+            <p style="color: #64748b; font-size: 14px;">当前汇率: <span id="cur-rate" style="font-weight:bold;">--</span> | 手续费: <span id="cur-fee" style="font-weight:bold;">--</span>%</p>
+            <div class="form-group">
+                <label>全站公告内容</label>
+                <textarea id="ann-text" rows="5" placeholder="输入公告内容..."></textarea>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                <input type="checkbox" id="ann-pop" style="width: auto; margin: 0;">
+                <label style="margin: 0; cursor: pointer; font-size: 14px;" for="ann-pop">开启弹窗（用户首次访问时显示）</label>
+            </div>
+            <button onclick="updAnn(this)"><i class="ri-save-line"></i> 更新设置</button>
+        </div>
+    </div>
+
+    <!-- 商品管理 -->
+    <div id="prod" class="page">
+        <div class="card">
+            <h2 id="prod-title"><i class="ri-add-circle-line"></i> 上架新商品</h2>
+            <input type="hidden" id="p-id">
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                <div class="form-group">
+                    <label>商品名称</label>
+                    <input id="p-name" placeholder="例如：高级VPN账号">
+                </div>
+                <div class="form-group">
+                    <label>价格 (USDT)</label>
+                    <input id="p-price" placeholder="例如：10.5">
+                </div>
+                <div class="form-group">
+                    <label>库存</label>
+                    <input id="p-stock" type="number" placeholder="例如：100">
+                </div>
+                <div class="form-group">
+                    <label>分类</label>
+                    <input id="p-cat" placeholder="例如：VPN、账号、服务">
+                </div>
+<div class="form-group">
+                    <label>商品类型</label>
+                    <select id="p-type">
+                        <option value="virtual">⚡ 虚拟商品</option>
+                        <option value="physical">📦 实物商品</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>商品图片 (支持多张)</label>
+                    <div class="file-upload">
+                        <input type="file" id="p-file" onchange="uploadImg(this)" accept="image/png,image/jpeg,image/gif,image/webp,image/jpg">
+                        <div class="file-upload-label">
+                            <i class="ri-image-add-line"></i>
+                            <span>点击选择图片</span>
+                        </div>
+                    </div>
+                    <div id="p-img-list" class="img-list"></div>
+                    <p style="font-size:12px; color:#94a3b8; margin-top:5px;">支持 JPEG, PNG, GIF, WebP 格式，最大10MB</p>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>详细描述</label>
+                <textarea id="p-desc" rows="3" placeholder="商品详细描述..."></textarea>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button id="btn-save-prod" onclick="saveProd(this)"><i class="ri-check-line"></i> 上架商品</button>
+                <button id="btn-cancel-edit" onclick="resetProdForm()" style="background: #94a3b8; display: none;"><i class="ri-close-line"></i> 取消编辑</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><i class="ri-list-settings-line"></i> 已上架商品管理</h2>
+            <div id="prod-list-manage"></div>
+        </div>
+    </div>
+
+    <!-- 订单管理 -->
+    <div id="order" class="page">
+        <div class="card">
+            <h2><i class="ri-list-check"></i> 订单列表</h2>
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <input type="text" id="order-search" placeholder="搜索订单编码..." style="flex:1;" onkeyup="searchOrders()">
+                <select id="order-filter" onchange="filterOrders()">
+                    <option value="all">全部状态</option>
+                    <option value="pending">待支付</option>
+                    <option value="paid">已支付</option>
+                    <option value="cancelled">已取消</option>
+                </select>
+            </div>
+            
+            <div id="order-loading" style="text-align:center; padding:20px;">
+                <div class="loader" style="margin:0 auto;"></div>
+                <div style="color:#94a3b8; margin-top:10px;">加载订单中...</div>
+            </div>
+            
+            <table id="order-table">
+                <thead>
+                    <tr>
+                        <th>订单编码/时间</th>
+                        <th>商品/数量/金额</th>
+                        <th>用户/联系方式</th>
+                        <th>支付/状态</th>
+                        <th>详情/发货</th>
+                    </tr>
+                </thead>
+                <tbody id="order-list"></tbody>
+            </table>
+            
+            <div class="pagination" id="order-pagination" style="display: none;">
+                <button class="page-btn" onclick="changeOrderPage(-1)" id="order-prev">上一页</button>
+                <span style="padding:8px 16px; color:#64748b;" id="order-page-info">第1页</span>
+                <button class="page-btn" onclick="changeOrderPage(1)" id="order-next">下一页</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 用户管理 -->
+    <div id="users" class="page">
+        <div class="card">
+            <h2><i class="ri-user-line"></i> 用户管理</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div style="color: #64748b; font-size: 14px;">共 <span id="user-count" style="font-weight:bold;">0</span> 个用户</div>
+                <input type="text" id="user-search" placeholder="搜索用户..." style="width: 200px;" onkeyup="searchUsers()">
+            </div>
+            
+            <div class="user-list" id="user-list">
+                <!-- 用户列表将在这里动态加载 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 招聘管理 -->
+    <div id="hire" class="page">
+        <div class="card">
+            <h2><i class="ri-user-add-line"></i> 招聘信息配置</h2>
+            <div id="h-list-container"></div>
+            <button onclick="addHireItem()" style="background: #e2e8f0; color: #334155; margin-top: 10px;">
+                <i class="ri-add-line"></i> 添加职位
+            </button>
+            <hr style="border-color: #e2e8f0; margin: 20px 0;">
+           <button onclick="updHire(this)"><i class="ri-save-line"></i> 保存所有招聘信息</button>
+        </div>
+    </div>
+
+   <div id="funds" class="page">
+        <div class="card">
+            <h2><i class="ri-money-cny-box-line"></i> 用户资金明细 (流水)</h2>
+            <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+                <input type="text" id="fund-user-search" placeholder="输入用户UID筛选..." style="margin:0; width: 200px;">
+                <button onclick="loadBalanceLogs()" style="padding: 10px 15px;"><i class="ri-search-line"></i> 查询</button>
+                <button onclick="document.getElementById('fund-user-search').value='';loadBalanceLogs()" style="padding: 10px 15px; background: #64748b;">重置</button>
+            </div>
+            <div style="overflow-x:auto;">
+                <table style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>时间</th>
+                            <th>用户</th>
+                            <th>类型</th>
+                            <th>金额变动</th>
+                            <th>备注</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fund-list">
+                        <tr><td colspan="5" style="text-align:center;color:#94a3b8;">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 客服聊天 -->
+   <div id="chat" class="page">
+        <div class="chat-container" id="chat-wrapper">
+            <div class="chat-users-panel">
+                <div id="chat-users">
+                    </div>
+            </div>
+            <div class="chat-main-panel">
+                <div class="chat-header">
+                    <i class="ri-arrow-left-line chat-back-btn" onclick="closeChatMobile()"></i>
+                    <div style="font-weight:bold; font-size:16px;" id="chat-title-uid">选择会话</div>
+                </div>
+
+                <div id="chat-box" class="chat-messages">
+                    <div style="text-align:center; padding-top:100px; color:#94a3b8;">
+                        <i class="ri-chat-smile-2-line" style="font-size:48px; opacity:0.5;"></i>
+                        <div style="margin-top:10px;">点击左侧列表开始对话</div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-container">
+                    <input id="reply-in" type="text" style="flex:1;" placeholder="输入回复..." onkeypress="if(event.key === 'Enter') reply(this)">
+                    <button onclick="reply(this)" style="padding:10px; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+                        <i class="ri-send-plane-fill" style="font-size:18px; margin:0;"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "https://wzmdxd.onrender.com"; 
+    
+    // 防XSS转义函数
+    function escapeHtml(text) {
+        if (!text) return text;
+        return text.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+    
+   let curData = {}, curChat = null;
+    let tempImgs = [];
+    let searchTimer = null; // 新增防抖定时器
+    let adminToken = localStorage.getItem('adminToken');
+    let currentOrderPage = 1;
+    let ordersPerPage = 10;
+    let totalOrderPages = 1;
+
+    // 初始化检查
+    if(adminToken) {
+        document.getElementById('login-modal').style.display = 'none';
+    } else {
+        document.getElementById('login-modal').style.display = 'flex';
+    }
+
+    // 显示通知
+    function showNotification(title, message, type = 'info') {
+        const container = document.getElementById('notification-container');
+        const notification = document.createElement('div');
+        notification.className = `admin-notification ${type}`;
+        notification.innerHTML = `
+            <div class="admin-notification-icon">
+                ${type === 'success' ? '✓' : type === 'warning' ? '⚠' : type === 'danger' ? '✗' : 'ℹ'}
+            </div>
+            <div class="admin-notification-content">
+                <div class="admin-notification-title">${title}</div>
+                <div class="admin-notification-message">${message}</div>
+            </div>
+            <button class="admin-notification-close" onclick="this.parentElement.remove()">×</button>
+        `;
+        
+        container.appendChild(notification);
+        
+        // 自动移除
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.remove();
+            }
+        }, 5000);
+    }
+
+    async function adminLogin() {
+        const u = document.getElementById('admin-user').value;
+        const p = document.getElementById('admin-pass').value;
+        
+        if (!u || !p) {
+            showNotification('错误', '请输入用户名和密码', 'danger');
+            return;
+        }
+        
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/login`, {
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username: u, password: p })
+            });
+            
+            const d = await res.json();
+            if(d.success) {
+                adminToken = d.token;
+                localStorage.setItem('adminToken', adminToken);
+                document.getElementById('login-modal').style.display = 'none';
+                showNotification('成功', '登录成功', 'success');
+                refresh();
+            } else {
+                showNotification('错误', '登录失败: ' + d.msg, 'danger');
+            }
+        } catch(e) { 
+            showNotification('错误', '网络连接失败', 'danger');
+            console.error('登录错误:', e); 
+        }
+    }
+
+    function getAuthHeaders() {
+        return {
+            'Content-Type': 'application/json',
+            'Authorization': adminToken
+        };
+    }
+
+    function nav(id) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        event.currentTarget.classList.add('active');
+        refresh();
+    }
+
+    // 刷新数据
+    async function refresh() {
+        if(!adminToken) return;
+        
+        // 防止在输入时刷新
+        if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT')) {
+            return;
+        }
+
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/all`, { 
+                headers: getAuthHeaders() 
+            });
+            
+            if(res.status === 401) {
+                localStorage.removeItem('adminToken');
+                adminToken = null;
+                document.getElementById('login-modal').style.display = 'flex';
+                showNotification('错误', '登录已过期，请重新登录', 'danger');
+                return;
+            }
+            
+            curData = await res.json();
+
+            // 更新仪表盘统计
+            updateDashboardStats();
+            
+            // 更新公告设置
+            if(document.activeElement.id !== 'ann-text') {
+                document.getElementById('ann-text').value = curData.announcement;
+            }
+            document.getElementById('cur-rate').innerText = curData.rate;
+            document.getElementById('cur-fee').innerText = curData.feeRate || 0;
+            document.getElementById('ann-pop').checked = curData.popup;
+
+            // 商品管理
+            if (document.getElementById('prod').classList.contains('active')) {
+                renderProdManage(curData.products || []);
+            }
+
+           // 招聘管理
+            if (document.getElementById('hire').classList.contains('active')) {
+                if(!document.getElementById('h-list-container').innerHTML.trim()) {
+                   renderHireList(curData.hiring);
+                }
+            }
+            
+            // 资金明细
+            if (document.getElementById('funds').classList.contains('active')) {
+                loadBalanceLogs();
+            }
+
+            // 订单管理
+            if (document.getElementById('order').classList.contains('active')) {
+                renderOrders();
+            }
+            
+            // 用户管理
+            if (document.getElementById('users').classList.contains('active')) {
+                renderUsers();
+            }
+
+            // 聊天管理
+            if (document.getElementById('chat').classList.contains('active')) {
+                renderChats();
+                if(curChat) openChat(curChat);
+            }
+        } catch (e) { 
+            console.error('刷新数据错误:', e);
+            if (e.message.includes('Failed to fetch')) {
+                showNotification('错误', '网络连接失败', 'danger');
+            }
+        }
+    }
+    
+    // 更新仪表盘统计
+    function updateDashboardStats() {
+        // 今日订单
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const todayOrders = curData.orders.filter(order => {
+            const orderDate = new Date(order.created_at);
+            return orderDate >= today;
+        });
+        
+        document.getElementById('today-orders').textContent = todayOrders.length;
+        
+        const todayAmount = todayOrders.reduce((sum, order) => {
+            return sum + parseFloat(order.usdt_amount || 0);
+        }, 0);
+        
+        document.getElementById('today-amount').textContent = `金额: ${todayAmount.toFixed(2)} USDT`;
+        
+        // 待处理订单
+        const pendingOrders = curData.orders.filter(order => order.status === '待支付');
+        document.getElementById('pending-orders').textContent = pendingOrders.length;
+        
+        // 总用户数
+        document.getElementById('total-users').textContent = curData.users?.length || 0;
+        
+        // 商品总数
+        document.getElementById('total-products').textContent = curData.products?.length || 0;
+    }
+    
+    // 渲染订单
+    function renderOrders() {
+        document.getElementById('order-loading').style.display = 'none';
+        
+        const orders = curData.orders || [];
+        const searchTerm = document.getElementById('order-search').value.toLowerCase();
+        const filterStatus = document.getElementById('order-filter').value;
+        
+        // 过滤订单
+        let filteredOrders = orders;
+        
+        if (searchTerm) {
+            filteredOrders = filteredOrders.filter(order => 
+                order.order_id.toLowerCase().includes(searchTerm) ||
+                (order.product_name && order.product_name.toLowerCase().includes(searchTerm)) ||
+                (order.contact && order.contact.toLowerCase().includes(searchTerm))
+            );
+        }
+        
+        if (filterStatus !== 'all') {
+            filteredOrders = filteredOrders.filter(order => {
+                if (filterStatus === 'pending') return order.status === '待支付';
+                if (filterStatus === 'paid') return order.status === '已支付';
+                if (filterStatus === 'cancelled') return order.status === '已取消';
+                return true;
+            });
+        }
+        
+        // 分页
+        totalOrderPages = Math.ceil(filteredOrders.length / ordersPerPage);
+        const startIndex = (currentOrderPage - 1) * ordersPerPage;
+        const endIndex = startIndex + ordersPerPage;
+        const pageOrders = filteredOrders.slice(startIndex, endIndex);
+        
+        // 渲染表格
+        document.getElementById('order-list').innerHTML = pageOrders.map(o => {
+            const isPaid = o.status === '已支付';
+            let ship = null;
+            try { 
+                ship = JSON.parse(o.shipping_info); 
+            } catch(e){}
+            
+            let addrHtml = '';
+            if(ship && ship.name) {
+                addrHtml = `
+                <div style="background:#f1f5f9; padding:8px; border-radius:4px; margin-top:4px; font-size:12px; color:#475569;">
+                    <div><i class="ri-user-line"></i> ${ship.name} | <i class="ri-phone-line"></i> ${ship.tel}</div>
+                    <div><i class="ri-map-pin-line"></i> ${ship.addr}</div>
+                </div>`;
+            }
+
+            let money = "";
+            if(o.payment_method === 'USDT') {
+                money = `${o.usdt_amount} USDT`;
+            } else {
+                money = `¥${o.cny_amount} CNY`;
+            }
+            
+            const quantity = o.quantity || 1;
+            const productName = o.product_name || '未知商品';
+            
+            // 查找用户信息
+            const user = curData.users?.find(u => u.id === o.user_id) || {};
+            const userContact = user.contact || '未知用户';
+            const userDisplayName = user.display_name || user.contact || '未知用户';
+
+            let action = "";
+            
+            // 取消订单逻辑
+            if(!isPaid && o.status !== '已取消' && o.status !== '已关闭') {
+                action += `
+                    <button onclick="cancelOrderAdmin('${o.order_id}')" style="padding:8px 12px; font-size:12px; background:#ef4444; color:white; border:none; border-radius:6px; margin-bottom:8px; display:block; width:100%; cursor:pointer;">
+                        <i class="ri-close-circle-line"></i> 取消该订单
+                    </button>
+                    <div style="font-size:12px; color:#64748b; margin-bottom:10px; background:#f1f5f9; padding:8px; border-radius:6px;">
+                        <i class="ri-information-line"></i> 确认收款请在群内操作。
+                    </div>
+                `;
+            }
+
+            // 如果订单是已取消状态，显示提示
+            if(o.status === '已取消' || o.status.includes('取消')) {
+                action += `
+                    <div style="background:#fee2e2; color:#b91c1c; padding:10px; border-radius:6px; font-size:12px; margin-top:5px; border:1px solid #fecaca;">
+                        <strong><i class="ri-error-warning-line"></i> 该笔订单已被客服取消</strong><br>
+                        如有疑问请联系客服
+                    </div>
+                `;
+            }
+
+if(!isPaid && o.payment_method !== 'USDT' && o.status !== '已取消') {
+                action += `
+                    <div style="margin-top:8px; border:1px dashed #cbd5e1; border-radius:8px; padding:10px; background:#f8fafc;">
+                        <div style="font-size:12px; color:#64748b; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                            <span><i class="ri-qr-code-line"></i> 收款二维码</span>
+                            ${o.qrcode_url ? '<span style="color:#10b981; font-size:10px;"><i class="ri-check-line"></i> 已存在</span>' : ''}
+                        </div>
+                        
+                        <div style="display:flex; gap:5px;">
+                            <input type="file" id="qrcode-${o.order_id}" accept="image/png,image/jpeg,image/gif,image/webp,image/jpg" style="display:none;" onchange="document.getElementById('btn-upload-${o.order_id}').click()">
+                            
+                            <button onclick="document.getElementById('qrcode-${o.order_id}').click()" style="flex:1; padding:8px; font-size:12px; background:white; color:#334155; border:1px solid #e2e8f0; border-radius:6px; box-shadow:none;">
+                                <i class="ri-image-add-line"></i> 选择图片
+                            </button>
+                            
+                            <button id="btn-upload-${o.order_id}" onclick="uploadQrcode('${o.order_id}', 'order')" style="display:none;"></button>
+                        </div>
+
+                        ${o.qrcode_url ? `
+                            <div style="margin-top:8px; position:relative; width:60px; height:60px; border-radius:6px; overflow:hidden; border:1px solid #e2e8f0; cursor:pointer;" onclick="Swal.fire({imageUrl: '${o.qrcode_url}', showConfirmButton: false, background: 'transparent'})">
+                                <img src="${o.qrcode_url}" style="width:100%; height:100%; object-fit:cover;">
+                                <div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.5); color:white; font-size:9px; text-align:center;">点击查看</div>
+                            </div>
+                        ` : ''}
+                    </div>`;
+            }
+            
+            let trackHtml = `<div style="margin-top:5px; display:flex; gap:5px;">
+                <input id="track-${o.order_id}" value="${o.tracking_number||''}" placeholder="输入物流单号" style="padding:6px; margin:0; font-size:12px; flex:1;">
+                <button onclick="saveTrack('${o.order_id}')" style="padding:6px 12px; font-size:12px;"><i class="ri-save-line"></i> 保存</button>
+            </div>`;
+
+            return `<tr>
+                <td>
+                    <div style="font-weight:500; font-family:monospace;">${o.order_id}</div>
+                    <div style="color:#94a3b8; font-size:12px; margin-top:4px;">${new Date(o.created_at).toLocaleString()}</div>
+                </td>
+                <td>
+                    <div style="font-weight:500;">${productName}</div>
+                    <div style="color:#64748b; font-size:12px; margin-top:4px;">数量: ${quantity}</div>
+                    <div style="color:#334155; font-weight:bold; margin-top:4px;">${money}</div>
+                </td>
+                <td>
+                    <div style="font-weight:500;">${escapeHtml(userDisplayName)}</div>
+                    <div style="color:#64748b; font-size:12px; margin-top:4px;">${escapeHtml(userContact)}</div>
+                    <div style="color:#94a3b8; font-size:11px; margin-top:4px;">ID: ${o.user_id || '未知'}</div>
+                </td>
+                <td>
+                    <div style="font-weight:500;">${o.payment_method}</div>
+                    <div style="margin-top:6px;"><span class="tag ${isPaid?'paid':'wait'}">${o.status}</span></div>
+                </td>
+                <td style="min-width: 250px;">
+                    ${addrHtml}
+                    ${trackHtml}
+                    <div style="margin-top:8px;">${action}</div>
+                </td>
+            </tr>`;
+        }).join('');
+        
+        // 更新分页器
+        const pagination = document.getElementById('order-pagination');
+        const pageInfo = document.getElementById('order-page-info');
+        const prevBtn = document.getElementById('order-prev');
+        const nextBtn = document.getElementById('order-next');
+        
+        if (filteredOrders.length > ordersPerPage) {
+            pagination.style.display = 'flex';
+            pageInfo.textContent = `第${currentOrderPage}/${totalOrderPages}页`;
+            prevBtn.disabled = currentOrderPage === 1;
+            nextBtn.disabled = currentOrderPage === totalOrderPages;
+        } else {
+            pagination.style.display = 'none';
+        }
+    }
+    
+   // 搜索订单 (已加防抖)
+    function searchOrders() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            currentOrderPage = 1;
+            renderOrders();
+        }, 300);
+    }
+    
+    // 过滤订单
+    function filterOrders() {
+        currentOrderPage = 1;
+        renderOrders();
+    }
+    
+    // 切换订单页面
+    function changeOrderPage(delta) {
+        const newPage = currentOrderPage + delta;
+        if (newPage >= 1 && newPage <= totalOrderPages) {
+            currentOrderPage = newPage;
+            renderOrders();
+        }
+    }
+    
+function renderUsers() {
+        const users = curData.users || [];
+        document.getElementById('user-count').textContent = users.length;
+        
+        const searchTerm = document.getElementById('user-search').value.toLowerCase();
+        let filteredUsers = users;
+        
+        if (searchTerm) {
+            filteredUsers = filteredUsers.filter(user => 
+                (user.contact && user.contact.toLowerCase().includes(searchTerm)) ||
+                (user.id && user.id.toString().includes(searchTerm))
+            );
+        }
+        
+       const userList = document.getElementById('user-list');
+        userList.innerHTML = filteredUsers.map(user => {
+            // 判断该用户是否有订单
+            const hasOrder = curData.orders && curData.orders.some(o => o.user_id == user.id); // 注意这里用弱等于兼容字符串和数字
+            
+            return `
+            <div class="user-item" style="align-items: flex-start;">
+                <div class="user-info">
+                    <div class="user-contact" style="font-weight:bold; font-size:16px; color:#1e293b; display:flex; align-items:center; gap:8px;">
+                        ${user.contact || '未知用户'}
+                        ${hasOrder 
+                            ? `<span style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:100px; font-size:10px; font-weight:normal;">已下单</span>` 
+                            : `<span style="background:#f1f5f9; color:#94a3b8; padding:2px 8px; border-radius:100px; font-size:10px; font-weight:normal;">无订单</span>`}
+                    </div>
+                    
+                    <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:10px; font-size:12px; color:#64748b;">
+                        <div style="background:#f8fafc; padding:2px 6px; border-radius:4px; border:1px solid #e2e8f0;">
+                            <i class="ri-id-card-line"></i> UID: ${user.id}
+                        </div>
+                        ${user.invite_code ? `
+                        <div style="background:#f0f9ff; color:#0284c7; padding:2px 6px; border-radius:4px; border:1px solid #bae6fd;">
+                            <i class="ri-coupon-3-line"></i> 码: ${user.invite_code}
+                        </div>` : ''}
+                        ${user.invited_by ? `
+                        <div style="background:#fff7ed; color:#ea580c; padding:2px 6px; border-radius:4px; border:1px solid #ffedd5;">
+                            <i class="ri-share-forward-line"></i> 上线: ${user.invited_by}
+                        </div>` : ''}
+                    </div>
+
+                    <div style="margin-top:8px; font-family:monospace; font-size:14px; color:#334155;">
+                        <span style="color:#94a3b8; font-family:-apple-system, sans-serif;">余额:</span> 
+                        <span style="color:#10b981; font-weight:bold; font-size:16px;">${parseFloat(user.balance || 0).toFixed(2)}</span> <span style="font-size:12px;">USDT</span>
+                    </div>
+                    <div class="user-date" style="font-size:11px; color:#cbd5e1; margin-top:4px;">
+                        注册时间: ${new Date(user.created_at).toLocaleString()}
+                    </div>
+                </div>
+                
+                <div style="display:flex; flex-direction:column; gap:8px; margin-top:5px;">
+                     <button onclick="editBalance('${user.id}')" style="padding:6px 12px; font-size:12px; background:white; color:#3b82f6; border:1px solid #3b82f6; border-radius:6px; box-shadow:none;">
+                        <i class="ri-money-dollar-circle-line"></i> 余额
+                    </button>
+                    <button onclick="initiateChat('${user.id}')" style="padding:6px 12px; font-size:12px; background:white; color:#8b5cf6; border:1px solid #8b5cf6; border-radius:6px; box-shadow:none;">
+                        <i class="ri-message-3-line"></i> 聊天
+                    </button>
+                    <button onclick="delUser('${user.id}')" style="padding:6px 12px; font-size:12px; background:white; color:#ef4444; border:1px solid #ef4444; border-radius:6px; box-shadow:none;">
+                        <i class="ri-delete-bin-line"></i> 删除
+                    </button>
+                </div>
+            </div>
+        `}).join('');
+        
+        if (filteredUsers.length === 0) {
+            userList.innerHTML = '<div style="text-align:center; padding:40px; color:#94a3b8;">暂无用户数据</div>';
+        }
+    }
+
+    async function delUser(uid) {
+        const res = await Swal.fire({
+            title: '确定永久删除用户?',
+            text: "此操作不可恢复，将删除用户所有数据！",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消'
+        });
+
+        if (res.isConfirmed) {
+            try {
+                await fetch(`${API_BASE}/api/admin/user/${uid}`, { 
+                    method: 'DELETE', 
+                    headers: getAuthHeaders() 
+                });
+                showNotification('成功', '用户已删除', 'success');
+                refresh();
+            } catch(e) {
+                showNotification('错误', '删除失败', 'danger');
+            }
+        }
+    }
+
+    // ================= 2. 将以下两个新函数粘贴到 renderUsers 函数的后面 =================
+
+    // 功能：后台修改用户余额（带弹窗动画）
+    async function editBalance(uid) {
+        const { value: formValues } = await Swal.fire({
+            title: '修改余额',
+            html: `
+                <div style="text-align:left; font-size:13px; color:#64748b; margin-bottom:5px;">目标用户 ID: ${uid}</div>
+                <select id="swal-type" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; margin-bottom:10px;">
+                    <option value="add">➕ 增加余额 (充值)</option>
+                    <option value="subtract">➖ 扣除余额</option>
+                    <option value="set">🟰 设置为指定金额</option>
+                </select>
+                <input id="swal-amount" type="number" step="0.01" placeholder="输入金额" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
+            `,
+            showCancelButton: true,
+            confirmButtonColor: '#3b82f6',
+            confirmButtonText: '保存',
+            cancelButtonText: '取消',
+            focusConfirm: false,
+            preConfirm: () => {
+                return {
+                    type: document.getElementById('swal-type').value,
+                    amount: document.getElementById('swal-amount').value
+                }
+            }
+        });
+
+        if (formValues && formValues.amount) {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/user/balance`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ userId: uid, ...formValues })
+                });
+                const d = await res.json();
+                if(d.success) {
+                    Swal.fire({ icon:'success', title:'修改成功', timer:1500, showConfirmButton:false });
+                    refresh(); // 刷新列表
+                } else {
+                    Swal.fire('失败', d.msg, 'error');
+                }
+            } catch(e) {
+                Swal.fire('错误', '网络请求失败', 'error');
+            }
+        }
+    }
+
+    // 功能：后台发起聊天（自动跳转）
+    async function initiateChat(uid) {
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/chat/initiate`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ userId: uid })
+            });
+            const d = await res.json();
+            
+            if(d.success) {
+                // 切换到聊天页面
+                nav('chat');
+                showNotification('成功', '已发起聊天，正在跳转...', 'success');
+                // 稍微延迟一下等待数据刷新，然后自动打开该用户的聊天窗口
+                setTimeout(() => {
+                    const chatItem = document.querySelector(`.chat-list-item[onclick*="${d.sessionId}"]`);
+                    if(chatItem) chatItem.click();
+                }, 800);
+            }
+        } catch(e) {
+            showNotification('错误', '操作失败', 'danger');
+        }
+    }
+
+  // 商品管理列表渲染
+    function renderProdManage(list) {
+        const container = document.getElementById('prod-list-manage');
+        
+        if (!list || list.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:40px; color:#94a3b8;">暂无商品</div>';
+            return;
+        }
+        
+        container.innerHTML = list.map(p => {
+            // 处理图片
+            let imgHtml = '';
+            try {
+                const images = p.image_url ? JSON.parse(p.image_url) : [];
+                if (images.length > 0) {
+                    let firstImage = images[0];
+                    if (!firstImage.startsWith('data:') && !firstImage.startsWith('http')) {
+                        firstImage = `${API_BASE}${firstImage}`;
+                    }
+                    imgHtml = `<img src="${firstImage}" style="width:40px; height:40px; object-fit:cover; border-radius:4px; margin-right:10px;">`;
+                }
+            } catch(e) {} 
+
+            return `
+            <div class="prod-row">
+                <div style="flex:1; display:flex; align-items:center;">
+                    ${imgHtml}
+                    <div>
+                        <div style="color:#0ea5e9; font-weight:bold;">${p.name}</div>
+                        <div style="font-size:12px; color:#64748b;">
+                            ${p.price} USDT | 库存:${p.stock} | ${p.category} 
+                            ${p.is_pinned ? '| ★已置顶' : ''}
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <button class="action-btn btn-pin" onclick="pinProd(${p.id})" title="${p.is_pinned ? '取消置顶' : '置顶'}">
+                        <i class="ri-pushpin-${p.is_pinned ? 'fill' : 'line'}"></i> ${p.is_pinned ? '取消置顶' : '置顶'}
+                    </button>
+                    <button class="action-btn btn-edit" onclick='editProd(${JSON.stringify(p)})' title="编辑">
+                        <i class="ri-edit-line"></i> 编辑
+                    </button>
+                    <button class="action-btn btn-del" onclick="delProd(${p.id})" title="删除">
+                        <i class="ri-delete-bin-line"></i> 删除
+                    </button>
+                </div>
+            </div>
+        `}).join('');
+    }
+
+    function editProd(p) {
+        document.getElementById('prod-title').innerHTML = `<i class="ri-edit-line"></i> 编辑商品 (ID: ${p.id})`;
+        document.getElementById('p-id').value = p.id;
+        document.getElementById('p-name').value = p.name;
+        document.getElementById('p-price').value = p.price;
+        document.getElementById('p-stock').value = p.stock;
+        document.getElementById('p-cat').value = p.category;
+        document.getElementById('p-type').value = p.type || 'virtual';
+        document.getElementById('p-desc').value = p.description || '';
+        
+        try {
+            if(p.image_url) {
+                tempImgs = JSON.parse(p.image_url);
+            } else {
+                tempImgs = [];
+            }
+        } catch(e) { 
+            tempImgs = p.image_url ? [p.image_url] : []; 
+        }
+        
+        renderImgPreviews();
+        
+        document.getElementById('btn-save-prod').innerHTML = '<i class="ri-check-line"></i> 更新商品';
+        document.getElementById('btn-cancel-edit').style.display = 'inline-block';
+        
+        // 滚动到顶部
+        window.scrollTo(0, 0);
+    }
+
+    function resetProdForm() {
+        document.getElementById('prod-title').innerHTML = '<i class="ri-add-circle-line"></i> 上架新商品';
+        document.getElementById('p-id').value = "";
+        document.getElementById('p-name').value = "";
+        document.getElementById('p-price').value = "";
+        document.getElementById('p-stock').value = "";
+        document.getElementById('p-cat').value = "";
+        document.getElementById('p-type').value = "virtual";
+        document.getElementById('p-desc').value = "";
+        tempImgs = [];
+        renderImgPreviews();
+        document.getElementById('btn-save-prod').innerHTML = '<i class="ri-check-line"></i> 上架商品';
+        document.getElementById('btn-cancel-edit').style.display = 'none';
+    }
+
+    async function delProd(id) {
+        if(!confirm('确定删除该商品？此操作不可恢复。')) return;
+        
+        try {
+            await fetch(`${API_BASE}/api/admin/product/${id}`, { 
+                method: 'DELETE', 
+                headers: getAuthHeaders() 
+            });
+            
+            showNotification('成功', '商品删除成功', 'success');
+            refresh();
+        } catch (e) {
+            showNotification('错误', '删除失败', 'danger');
+            console.error('删除商品错误:', e);
+        }
+    }
+
+    async function pinProd(id) {
+        try {
+            await fetch(`${API_BASE}/api/admin/product/pin/${id}`, { 
+                method: 'POST', 
+                headers: getAuthHeaders() 
+            });
+            
+            showNotification('成功', '置顶状态已更新', 'success');
+            refresh();
+        } catch (e) {
+            showNotification('错误', '操作失败', 'danger');
+            console.error('置顶商品错误:', e);
+        }
+    }
+
+// ================= 聊天管理 (新版) =================
+    function renderChats() {
+        const uList = document.getElementById('chat-users');
+        const chats = curData.chats || {};
+        
+        const sessionIds = Object.keys(chats).sort((a, b) => {
+            const timeA = chats[a].length ? new Date(chats[a][chats[a].length-1].created_at) : 0;
+            const timeB = chats[b].length ? new Date(chats[b][chats[b].length-1].created_at) : 0;
+            return timeB - timeA;
+        });
+        
+        if (sessionIds.length === 0) {
+            uList.innerHTML = '<div style="text-align:center; padding:60px 20px; color:#94a3b8;">暂无会话</div>';
+            return;
+        }
+        
+        uList.innerHTML = sessionIds.map(sid => {
+            const messages = chats[sid] || [];
+            const lastMsg = messages.length > 0 ? messages[messages.length-1] : { content: '...', created_at: new Date() };
+            const unreadCount = messages.filter(m => m.sender === 'user' && !m.is_read).length;
+            const timeStr = new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const uid = sid.replace('user_', '');
+            
+            return `
+            <div class="chat-item ${curChat === sid ? 'active' : ''}" onclick="openChat('${sid}')">
+                <div class="chat-avatar">${uid.slice(-2)}</div>
+                <div class="chat-info">
+                    <div class="chat-top">
+                        <span class="chat-name">UID ${uid}</span>
+                        <span class="chat-time">${timeStr}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="chat-preview">${lastMsg.content}</span>
+                        ${unreadCount > 0 ? `<span class="chat-badge">${unreadCount}</span>` : ''}
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async function openChat(sid) {
+        curChat = sid;
+        
+        // 手机端动画：添加 active 类
+        document.getElementById('chat-wrapper').classList.add('active');
+        
+        const uid = sid.replace('user_', '');
+        document.getElementById('chat-title-uid').innerText = `正在回复: UID ${uid}`;
+
+        // 1. 前端立即消除小红点 (视觉优化)
+        if(curData.chats[sid]) {
+            curData.chats[sid].forEach(m => {
+                if(m.sender === 'user') m.is_read = true;
+            });
+        }
+        renderChats(); // 重新渲染列表以移除红点
+
+        // 2. 渲染消息
+        renderMessages(sid);
+
+        // 3. 告诉后端标记已读 (解决反复出现问题)
+        try {
+            await fetch(`${API_BASE}/api/admin/chat/read`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ sessionId: sid })
+            });
+        } catch(e) { console.error("标记已读失败", e); }
+    }
+
+    function renderMessages(sid) {
+        const msgs = curData.chats[sid] || [];
+        const box = document.getElementById('chat-box');
+        
+        box.innerHTML = msgs.map(m => {
+            const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const isMe = m.sender === 'admin';
+            
+            let contentHtml = m.content;
+            
+            // 判断是否为图片 (根据 msg_type 或 url 后缀)
+            if (m.msg_type === 'image' || (typeof m.content === 'string' && m.content.match(/\.(jpeg|jpg|gif|png|webp)$/i)) || (typeof m.content === 'string' && m.content.includes('cloudinary.com'))) {
+                contentHtml = `<img src="${m.content}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.open(this.src)">`;
+            }
+
+            return `
+            <div class="msg-row ${isMe ? 'admin' : 'user'}">
+                <div class="msg-bubble" style="${m.msg_type === 'image' || contentHtml.includes('<img') ? 'background:transparent; padding:0; box-shadow:none;' : ''}">
+                    ${contentHtml}
+                    <div class="msg-time" style="color:${isMe && !contentHtml.includes('<img') ?'rgba(255,255,255,0.7)':'#94a3b8'}">${time}</div>
+                </div>
+            </div>
+        `}).join('');
+        
+        setTimeout(() => { box.scrollTop = box.scrollHeight; }, 50);
+    }
+
+    function closeChatMobile() {
+        document.getElementById('chat-wrapper').classList.remove('active');
+        curChat = null;
+    }
+
+    async function reply(btn) {
+        if(!curChat) {
+            showNotification('提示', '请先选择一个客户', 'warning');
+            return;
+        }
+        
+        const t = document.getElementById('reply-in').value;
+        if(!t.trim()) {
+            showNotification('提示', '请输入回复内容', 'warning');
+            return;
+        }
+        
+        btn.disabled = true;
+        btn.innerHTML = '<div class="loader" style="width:16px; height:16px; border-width:2px;"></div>';
+        
+        try {
+            await fetch(`${API_BASE}/api/admin/reply`, { 
+                method:'POST', 
+                headers: getAuthHeaders(), 
+                body: JSON.stringify({ sessionId: curChat, text: t }) 
+            });
+            
+            document.getElementById('reply-in').value = '';
+            showNotification('成功', '回复已发送', 'success');
+            refresh();
+        } catch (e) {
+            showNotification('错误', '发送失败', 'danger');
+            console.error('发送回复错误:', e);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-send-plane-fill"></i> 发送';
+        }
+    }
+
+    // 图片上传
+    async function uploadImg(input) {
+        if (!input.files || !input.files[0]) return;
+        
+        const file = input.files[0];
+        const fileName = file.name.toLowerCase();
+        
+        // 检查文件类型
+        if (!fileName.match(/\.(jpeg|jpg|png|gif|webp)$/)) {
+            showNotification('错误', '只支持 JPEG, PNG, GIF, WebP 格式的图片', 'danger');
+            input.value = '';
+            return;
+        }
+        
+        // 检查文件大小 (10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            showNotification('错误', '图片大小不能超过10MB', 'danger');
+            input.value = '';
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // 显示上传状态
+        const uploadBtn = input.parentElement.querySelector('.file-upload-label');
+        const originalText = uploadBtn.innerHTML;
+        uploadBtn.innerHTML = '<div class="loader" style="width:16px; height:16px; border-width:2px;"></div> 上传中...';
+        uploadBtn.style.pointerEvents = 'none';
+        
+        try {
+            const res = await fetch(`${API_BASE}/api/upload`, {
+                method: 'POST',
+                headers: {'Authorization': adminToken},
+                body: formData
+            });
+            
+            const d = await res.json();
+            
+            if(d.success) {
+                tempImgs.push(d.url);
+                renderImgPreviews();
+                showNotification('成功', '图片上传成功', 'success');
+            } else {
+                showNotification('错误', d.error || '上传失败', 'danger');
+            }
+        } catch(e) { 
+            showNotification('错误', '图片上传失败', 'danger');
+            console.error('上传图片错误:', e);
+        } finally {
+            input.value = '';
+            uploadBtn.innerHTML = originalText;
+            uploadBtn.style.pointerEvents = 'auto';
+        }
+    }
+    
+   // 上传二维码
+    async function uploadQrcode(orderId, orderType = 'order') {
+        const input = document.getElementById(`qrcode-${orderId}`);
+        if (!input.files || !input.files[0]) return; // 没选文件直接返回
+        
+        const file = input.files[0];
+        const fileName = file.name.toLowerCase();
+        
+        // 检查文件类型
+        if (!fileName.match(/\.(jpeg|jpg|png|gif|webp)$/)) {
+            showNotification('错误', '只支持图片格式', 'danger');
+            input.value = '';
+            return;
+        }
+        
+        // 检查文件大小
+        if (file.size > 10 * 1024 * 1024) {
+            showNotification('错误', '图片大小不能超过10MB', 'danger');
+            input.value = '';
+            return;
+        }
+
+        // 使用 SweetAlert 进行确认和预览
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const { isConfirmed } = await Swal.fire({
+                title: '确认上传收款码?',
+                html: `
+                    <p style="font-size:13px; color:#64748b;">将上传至订单: ${orderId}</p>
+                    <img src="${e.target.result}" style="max-width:200px; max-height:200px; border-radius:8px; margin-top:10px; border:1px solid #e2e8f0;">
+                `,
+                showCancelButton: true,
+                confirmButtonColor: '#0ea5e9',
+                confirmButtonText: '立即上传',
+                cancelButtonText: '取消',
+                showLoaderOnConfirm: true,
+                preConfirm: async () => {
+                    const formData = new FormData();
+                    formData.append('qrcode', file);
+                    formData.append('orderId', orderId);
+                    formData.append('orderType', orderType);
+                    
+                    try {
+                        const res = await fetch(`${API_BASE}/api/admin/order/upload_qrcode`, {
+                            method: 'POST',
+                            headers: {'Authorization': adminToken},
+                            body: formData
+                        });
+                        const d = await res.json();
+                        if(!d.success) throw new Error(d.error || "上传失败");
+                        return d;
+                    } catch(error) {
+                        Swal.showValidationMessage(`上传失败: ${error}`);
+                    }
+                }
+            });
+
+            if (isConfirmed) {
+                Swal.fire({icon: 'success', title: '上传成功', timer: 1500, showConfirmButton: false});
+                refresh();
+            }
+            // 清空 input 防止重复触发 change
+            input.value = '';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function renderImgPreviews() {
+        const container = document.getElementById('p-img-list');
+        
+        if (tempImgs.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8; border:2px dashed #e2e8f0; border-radius:8px;">暂无图片</div>';
+            return;
+        }
+        
+      container.innerHTML = tempImgs.map((url, i) => {
+            let fullUrl = url;
+            if (!url.startsWith('data:') && !url.startsWith('http')) {
+                fullUrl = `${API_BASE}${url}`;
+            }
+            return `
+            <div class="img-preview-box">
+                <img src="${fullUrl}" style="object-fit:cover;">
+                <button class="img-preview-remove" onclick="tempImgs.splice(${i},1);renderImgPreviews()">×</button>
+            </div>
+        `}).join('');
+    }
+
+    async function saveProd(btn) {
+        const id = document.getElementById('p-id').value;
+        const method = id ? 'PUT' : 'POST';
+        const url = id ? `${API_BASE}/api/admin/product/${id}` : `${API_BASE}/api/admin/product`;
+
+        // 验证表单
+        const name = document.getElementById('p-name').value.trim();
+        const price = document.getElementById('p-price').value.trim();
+        const stock = document.getElementById('p-stock').value;
+        const category = document.getElementById('p-cat').value.trim();
+        
+        if (!name || !price || !stock || !category) {
+            showNotification('错误', '请填写所有必填项', 'danger');
+            return;
+        }
+        
+        if (isNaN(parseFloat(price)) || parseFloat(price) <= 0) {
+            showNotification('错误', '请输入有效的价格', 'danger');
+            return;
+        }
+        
+        if (isNaN(parseInt(stock)) || parseInt(stock) < 0) {
+            showNotification('错误', '请输入有效的库存数量', 'danger');
+            return;
+        }
+
+        btn.disabled = true; 
+        btn.innerHTML = id ? '<div class="loader"></div> 更新中...' : '<div class="loader"></div> 上架中...';
+        
+        try {
+            const response = await fetch(url, {
+                method: method, 
+                headers: getAuthHeaders(), 
+                body: JSON.stringify({
+                    name: name,
+                    price: price,
+                    stock: parseInt(stock),
+                    category: category,
+                    desc: document.getElementById('p-desc').value.trim(),
+                    type: document.getElementById('p-type').value,
+                    imageUrl: JSON.stringify(tempImgs)
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok && result.success) {
+                showNotification('成功', id ? '商品更新成功' : '商品上架成功', 'success');
+                if(!id) resetProdForm();
+                refresh();
+            } else {
+                showNotification('错误', result.error || (id ? '更新失败' : '上架失败'), 'danger');
+            }
+        } catch(e) { 
+            showNotification('错误', '网络错误: ' + e.message, 'danger');
+            console.error('保存商品错误:', e);
+        } finally {
+            btn.disabled = false; 
+            btn.innerHTML = id ? '<i class="ri-check-line"></i> 更新商品' : '<i class="ri-check-line"></i> 上架商品';
+        }
+    }
+
+    // 招聘信息管理
+    function renderHireList(list) {
+        const container = document.getElementById('h-list-container');
+        container.innerHTML = '';
+        
+        if(!list || list.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">暂无招聘信息</div>';
+            return;
+        }
+        
+        list.forEach((item, index) => {
+            const div = document.createElement('div');
+            div.className = 'hire-item';
+            div.innerHTML = `
+                <div class="hire-del" onclick="this.parentElement.remove()">×</div>
+                <div class="form-group">
+                    <label>职位名称</label>
+                    <input class="h-title" value="${item.title || ''}" placeholder="例如：客服专员">
+                </div>
+                <div class="form-group">
+                    <label>职位详情</label>
+                    <textarea class="h-content" rows="3" placeholder="职位描述、要求、待遇等...">${item.content || ''}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>联系方式</label>
+                    <input class="h-contact" value="${item.contact || ''}" placeholder="例如：@telegram_username">
+                </div>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function addHireItem() {
+        const container = document.getElementById('h-list-container');
+        const div = document.createElement('div');
+        div.className = 'hire-item';
+        div.innerHTML = `
+            <div class="hire-del" onclick="this.parentElement.remove()">×</div>
+            <div class="form-group">
+                <label>职位名称</label>
+                <input class="h-title" placeholder="例如：客服专员">
+            </div>
+            <div class="form-group">
+                <label>职位详情</label>
+                <textarea class="h-content" rows="3" placeholder="职位描述、要求、待遇等..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>联系方式</label>
+                <input class="h-contact" placeholder="例如：@telegram_username">
+            </div>
+        `;
+        container.appendChild(div);
+    }
+
+    async function updHire(btn) {
+        const items = document.querySelectorAll('.hire-item');
+        const data = [];
+        
+        items.forEach(item => {
+            const title = item.querySelector('.h-title').value.trim();
+            const content = item.querySelector('.h-content').value.trim();
+            const contact = item.querySelector('.h-contact').value.trim();
+            
+            if (title && content) {
+                data.push({
+                    title: title,
+                    content: content,
+                    contact: contact
+                });
+            }
+        });
+        
+        if (data.length === 0) {
+            showNotification('错误', '请至少添加一个有效的招聘职位', 'danger');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<div class="loader"></div> 保存中...';
+        
+        try {
+            await fetch(`${API_BASE}/api/admin/update/hiring`, { 
+                method:'POST', 
+                headers: getAuthHeaders(), 
+                body: JSON.stringify(data) 
+            });
+            
+            showNotification('成功', '招聘信息已保存', 'success');
+        } catch (e) {
+            showNotification('错误', '保存失败', 'danger');
+            console.error('保存招聘信息错误:', e);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-save-line"></i> 保存所有招聘信息';
+        }
+    }
+
+    async function confirmPay(oid) {
+        if(!confirm('确认已收到该用户的微信/支付宝款项？')) return;
+        
+        try {
+            await fetch(`${API_BASE}/api/admin/confirm_pay`, { 
+                method:'POST', 
+                headers: getAuthHeaders(), 
+                body: JSON.stringify({ orderId: oid }) 
+            });
+            
+            showNotification('成功', '订单状态已更新为已支付', 'success');
+            refresh();
+        } catch(e) { 
+            showNotification('错误', '操作失败', 'danger');
+            console.error('确认支付错误:', e);
+        }
+    }
+
+    async function saveTrack(oid) {
+        const num = document.getElementById(`track-${oid}`).value.trim();
+        
+        if (!num) {
+            showNotification('错误', '请输入物流单号', 'danger');
+            return;
+        }
+        
+        try {
+            await fetch(`${API_BASE}/api/admin/order/ship`, { 
+                method:'POST', 
+                headers: getAuthHeaders(), 
+                body: JSON.stringify({ orderId: oid, trackingNumber: num }) 
+            });
+            
+            showNotification('成功', '物流信息已保存', 'success');
+            refresh();
+        } catch(e) { 
+            showNotification('错误', '保存失败', 'danger');
+            console.error('保存物流信息错误:', e);
+        }
+    }
+
+    async function updAnn(btn) {
+        const announcement = document.getElementById('ann-text').value.trim();
+        const showPopup = document.getElementById('ann-pop').checked;
+        
+        btn.disabled = true;
+        btn.innerHTML = '<div class="loader"></div> 更新中...';
+        
+        try {
+            // 更新公告
+            await fetch(`${API_BASE}/api/admin/update/announcement`, { 
+                method:'POST', 
+                headers: getAuthHeaders(), 
+                body: JSON.stringify({ text: announcement }) 
+            });
+            
+            // 更新弹窗设置
+            await fetch(`${API_BASE}/api/admin/update/popup`, { 
+                method:'POST', 
+                headers: getAuthHeaders(), 
+                body: JSON.stringify({ open: showPopup }) 
+            });
+            
+            showNotification('成功', '设置已更新', 'success');
+        } catch(e) { 
+            showNotification('错误', '更新失败', 'danger');
+            console.error('更新设置错误:', e);
+       } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-save-line"></i> 更新设置';
+        }
+    }
+
+   // 加载资金明细
+    async function loadBalanceLogs() {
+        const container = document.getElementById('fund-list');
+        const uid = document.getElementById('fund-user-search').value.trim();
+        
+        let url = `${API_BASE}/api/admin/balance_logs`;
+        if (uid) url += `?userId=${uid}`;
+
+        // 修改：只有当表格是空的(第一次加载)才显示loading，防止自动刷新时闪烁
+        if (!container.innerHTML.trim() || container.innerText === '加载中...') {
+             container.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">加载中...</td></tr>';
+        }
+
+        try {
+            const res = await fetch(url, { headers: getAuthHeaders() });
+            const logs = await res.json();
+            
+            if (!logs || logs.length === 0) {
+                container.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">暂无资金记录</td></tr>';
+                return;
+            }
+
+           container.innerHTML = logs.map(log => {
+                const amount = parseFloat(log.amount);
+                const isPlus = amount > 0;
+                const color = isPlus ? '#10b981' : '#ef4444';
+                // 如果是后台充值且为负数(扣款)，也显示红色
+                const sign = isPlus ? '+' : '';
+                const balanceDisplay = log.balance_after ? `<div style="font-size:10px; color:#94a3b8;">余: ${parseFloat(log.balance_after)}</div>` : '';
+
+                return `
+                <tr>
+                    <td style="color:#64748b; font-size:11px;">${new Date(log.created_at).toLocaleString()}</td>
+                    <td>
+                        <div style="font-weight:500; font-size:13px;">${escapeHtml(log.contact || '未知')}</div>
+                        <div style="font-size:10px; color:#94a3b8;">${log.user_id}</div>
+                    </td>
+                    <td><span class="tag" style="background:#f1f5f9; color:#475569; font-size:11px; white-space:nowrap;">${log.type}</span></td>
+                    <td>
+                        <div style="color:${color}; font-weight:bold; font-family:monospace; font-size:14px;">${sign}${amount}</div>
+                        ${balanceDisplay}
+                    </td>
+                    <td style="font-size:11px; color:#334155; min-width:100px;">${escapeHtml(log.remark)}</td>
+                </tr>
+            `}).join('');
+        } catch (e) {
+            console.error(e);
+            container.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#ef4444;">数据加载失败</td></tr>';
+        }
+    }
+
+    // 自动刷新
+    let refreshInterval = setInterval(refresh, 10000); // 每10秒刷新一次
+    
+    // 初始化
+    if (adminToken) {
+        refresh();
+    }
+    
+    // 添加键盘快捷键
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            // 可以添加关闭模态框的逻辑
+        }
+        
+        if (e.key === 'r' && e.ctrlKey) {
+            e.preventDefault();
+            refresh();
+        }
+        
+        if (e.key === 'l' && e.ctrlKey && e.shiftKey) {
+            e.preventDefault();
+            localStorage.removeItem('adminToken');
+            adminToken = null;
+            document.getElementById('login-modal').style.display = 'flex';
+            showNotification('提示', '已退出登录', 'info');
+        }
+    });
+    
+    // 防止离开页面时丢失数据
+    window.addEventListener('beforeunload', (e) => {
+        // e.preventDefault();
+        // e.returnValue = '';
+    });
+
+    // ================= 新增功能 =================
+
+    // 1. 初始化 Socket.io 实现实时消息
+    const socket = io(API_BASE);
+
+    socket.on('connect', () => {
+        console.log("已连接到实时服务器");
+    });
+
+    // 监听新消息
+    socket.on('new_message', (data) => {
+        // 如果当前没有聊天数据，初始化它
+        if (!curData.chats) curData.chats = {};
+        if (!curData.chats[data.session_id]) curData.chats[data.session_id] = [];
+        
+        // 添加消息到本地数据
+        curData.chats[data.session_id].push(data);
+
+        // 如果当前正好打开了这个会话，直接追加消息
+        if (curChat === data.session_id) {
+            const box = document.getElementById('chat-box');
+            const time = new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const isMe = data.sender === 'admin';
+            
+            let contentHtml = data.content;
+             if (data.msg_type === 'image' || (typeof data.content === 'string' && data.content.match(/\.(jpeg|jpg|gif|png|webp)$/i)) || (typeof data.content === 'string' && data.content.includes('cloudinary.com'))) {
+                contentHtml = `<img src="${data.content}" style="max-width:100%; border-radius:8px; cursor:pointer;" onclick="window.open(this.src)">`;
+            }
+
+            const div = document.createElement('div');
+            div.className = `msg-row ${isMe ? 'admin' : 'user'}`;
+            div.innerHTML = `
+                <div class="msg-bubble" style="${data.msg_type === 'image' || contentHtml.includes('<img') ? 'background:transparent; padding:0; box-shadow:none;' : ''}">
+                    ${contentHtml}
+                    <div class="msg-time" style="color:${isMe && !contentHtml.includes('<img') ?'rgba(255,255,255,0.7)':'#94a3b8'}">${time}</div>
+                </div>
+            `;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+            
+            // 标记为已读
+            if(data.sender === 'user') {
+                 fetch(`${API_BASE}/api/admin/chat/read`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ sessionId: data.session_id })
+                });
+            }
+        } else {
+            // 否则播放提示音或更新列表
+            showNotification('新消息', `来自 ${data.session_id} 的新消息`, 'info');
+            renderChats(); // 更新左侧列表预览
+        }
+        updateBadge(); // 更新底部红点
+    });
+
+    // 更新底部红点逻辑
+    function updateBadge() {
+        let totalUnread = 0;
+        if(curData.chats) {
+            Object.values(curData.chats).forEach(msgs => {
+                totalUnread += msgs.filter(m => m.sender === 'user' && !m.is_read).length;
+            });
+        }
+        const badge = document.getElementById('chat-badge-total');
+        if(totalUnread > 0) {
+            badge.style.display = 'block';
+            badge.innerText = totalUnread > 99 ? '99+' : totalUnread;
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    // 覆盖原有的 renderChats 以加入红点计算
+    const originalRenderChats = renderChats;
+    renderChats = function() {
+        originalRenderChats();
+        updateBadge();
+    }
+    
+    // 覆盖原有的 refresh 以加入红点计算
+    const originalRefresh = refresh;
+    refresh = async function() {
+        await originalRefresh();
+        updateBadge();
+    }
+
+    // 2. 取消订单功能
+    async function cancelOrderAdmin(oid) {
+        const { value: reason } = await Swal.fire({
+            title: '确定取消订单?',
+            input: 'text',
+            inputLabel: '取消原因 (选填)',
+            inputPlaceholder: '例如：用户未付款',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: '确定取消',
+            cancelButtonText: '点错了'
+        });
+
+        if (reason !== undefined) { // 点击了确定
+            try {
+                // 这里调用后端的取消接口，如果后端没有专门的管理员取消接口，我们使用通用的状态更新
+                // 注意：这里假设你希望前端显示“已取消”，我们手动去触发数据库变更
+                // 由于不重写后端，我们利用 backend 中已有的 update 逻辑或者复用取消逻辑
+                // 如果后端没有 /api/admin/order/cancel，我们可以用 update status
+                
+               // 调用管理员专属取消接口
+                const res = await fetch(`${API_BASE}/api/admin/order/cancel`, { 
+                    method: 'POST', 
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ orderId: oid }) 
+                });
+                
+                const d = await res.json();
+                if(d.success) {
+                    showNotification('成功', '订单已取消', 'success');
+                    refresh();
+                } else {
+                    // 如果普通接口失败（比如订单不是待支付），我们可能需要后端支持强制取消。
+                    // 但根据你的要求（只改前端），这是目前最好的方案。
+                    showNotification('提示', d.msg || '操作完成', 'info');
+                    refresh();
+                }
+            } catch(e) {
+                showNotification('错误', '网络请求失败', 'danger');
+            }
+        }
+    }
+
+    // 3. 修复移动端侧滑返回体验
+    // 修改 closeChatMobile，增加平滑过渡效果
+    function closeChatMobile() {
+        const wrapper = document.getElementById('chat-wrapper');
+        // 移除 active class，配合 CSS 的 transition 实现侧滑回去
+        wrapper.classList.remove('active');
+        curChat = null;
+        renderChats(); // 刷新列表状态
+    }
+</script>
+</body>
+</html>
