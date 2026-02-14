@@ -2,9 +2,10 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#0ea5e9">
     <link rel="manifest" href="/manifest.json">
     <title>NEXUS ADMIN | 总控</title>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
@@ -26,30 +27,28 @@
             overflow: hidden; 
         }
         
-       .sidebar { 
-            width: 260px; 
-            background: #fdfdfe; 
-            border-right: 1px solid #edf2f7; 
-            padding: 24px 16px; 
+        .sidebar { 
+            width: 240px; 
+            background: #ffffff; 
+            border-right: 1px solid #e2e8f0; 
+            padding: 20px; 
             display: flex; 
             flex-direction: column; 
             flex-shrink: 0; 
-            box-shadow: 4px 0 20px rgba(0,0,0,0.02); 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
             z-index: 100;
         }
         
         .logo { 
-            font-size: 22px; 
-            font-weight: 800; 
-            background: linear-gradient(135deg, #0ea5e9, #6366f1);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            font-size: 20px; 
+            font-weight: bold; 
+            color: #0ea5e9; 
             margin-bottom: 40px; 
             display: flex; 
             align-items: center; 
-            gap: 12px; 
-            padding: 12px;
-            letter-spacing: -0.5px;
+            gap: 10px; 
+            padding: 10px;
+            border-bottom: 1px solid #e2e8f0;
         }
         
         .menu-item { 
@@ -99,17 +98,11 @@
         
         .card { 
             background: #ffffff; 
-            border-radius: 20px; 
-            padding: 30px; 
-            border: 1px solid rgba(226, 232, 240, 0.6); 
-            margin-bottom: 24px; 
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.02), 0 4px 6px -2px rgba(0, 0, 0, 0.01);
-            transition: transform 0.3s ease;
-        }
-
-        .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.03);
+            border-radius: 12px; 
+            padding: 25px; 
+            border: 1px solid #e2e8f0; 
+            margin-bottom: 20px; 
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); 
         }
         
         h2 { 
@@ -156,26 +149,18 @@
         }
         
         button { 
-            background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%); 
+            background: linear-gradient(to right, #0ea5e9, #3b82f6); 
             border: none; 
-            padding: 12px 28px; 
-            border-radius: 12px; 
+            padding: 12px 24px; 
+            border-radius: 8px; 
             color: white; 
             font-weight: 600; 
             cursor: pointer; 
-            transition: all 0.3s; 
+            transition: 0.3s; 
             font-size: 14px;
             display: inline-flex;
             align-items: center;
-            gap: 10px;
-            box-shadow: 0 4px 14px 0 rgba(14, 165, 233, 0.3);
-        }
-
-        button:hover {
-            opacity: 1;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(14, 165, 233, 0.4);
-            filter: brightness(1.1);
+            gap: 8px;
         }
         
         button:hover { 
@@ -255,13 +240,11 @@
         }
         
         .tag { 
-            padding: 6px 12px; 
-            border-radius: 20px; 
-            font-size: 11px; 
-            font-weight: 700;
+            padding: 4px 8px; 
+            border-radius: 6px; 
+            font-size: 12px; 
+            font-weight: 500;
             display: inline-block;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
         
         .tag.paid { 
@@ -346,33 +329,23 @@
             }
 
             .menu-item.active {
-                color: #007aff; 
+                color: #007aff; /* iOS 激活蓝 */
                 background: transparent !important;
                 font-weight: 500;
-                transform: none; /* 手机端取消位移，防止乱跳 */
+                transform: translateY(-2px); /* 选中微动效 */
                 transition: all 0.2s;
             }
             
-            /* 统一图标样式，修复错位 */
-           .menu-item i { 
-                font-size: 21px !important; /* 统一调大图标 */
+            .menu-item i { 
+                font-size: 20px; 
                 width: auto;
                 margin-bottom: 2px;
                 display: block;
             }
-
-            /* --- 修复红点定位 --- */
-            .menu-item { position: relative; }
-            .nav-badge { top: 2px; right: 20%; } /* 调整红点位置到图标右上角 */
             
-            /* 核心修复：消除页面顶部白边 */
             .main { 
-                padding: 0 15px 15px 15px; /* 上0，左右下15 */
-                padding-top: env(safe-area-inset-top); /* 仅保留刘海屏安全距离 */
+                padding: 15px; 
             }
-            
-            /* 隐藏侧边栏的安装按钮 */
-            #install-item { display: none !important; }
 
             /* 订单列表卡片化适配 (保持不变) */
             #order-table thead { display: none; }
@@ -995,30 +968,10 @@
             transition: opacity 0.3s;
         }
         
-       .tooltip:hover .tooltiptext {
+        .tooltip:hover .tooltiptext {
             visibility: visible;
             opacity: 1;
         }
-        /* 修复移动端键盘遮挡 */
-        @media (max-width: 768px) {
-            .chat-main-panel {
-                height: 100%;
-                display: flex;
-                flex-direction: column;
-            }
-            .chat-messages {
-                flex: 1;
-                overflow-y: auto;
-            }
-            .chat-input-container {
-                flex-shrink: 0;
-                padding-bottom: calc(env(safe-area-inset-bottom) + 10px);
-            }
-        }
-        /* 安装按钮隐藏逻辑 */
-        /* 安装按钮默认隐藏，JS控制显示，或者直接开启用于测试 */
-        /* #install-item { display: none; } */ 
-        #install-item { display: flex; } /* 强制显示出来 */
     </style>
 </head>
 <body>
@@ -1042,19 +995,16 @@
 
 <!-- 主界面 -->
 <div class="sidebar">
-    <div class="logo"><i class="ri-command-line"></i> NEXUS Admin</div>
-    <div class="menu-item active" onclick="nav('dash')"><i class="ri-dashboard-line"></i> 仪表盘</div>
-    <div class="menu-item" onclick="nav('prod')"><i class="ri-shopping-cart-2-line"></i> 商品管理</div>
-    <div class="menu-item" onclick="nav('order')"><i class="ri-list-check"></i> 订单管理</div>
-    <div class="menu-item" onclick="nav('users')"><i class="ri-user-line"></i> 用户管理</div>
-  <div class="menu-item" onclick="nav('hire')"><i class="ri-user-add-line"></i> 招聘管理</div>
-    <div class="menu-item" onclick="nav('funds')"><i class="ri-money-cny-box-line"></i> 资金明细</div>
-    <div class="menu-item" onclick="nav('chat')">
-        <i class="ri-chat-1-line"></i> 客服聊天
-        <span id="chat-badge-total" class="nav-badge">0</span>
-    </div>
-    <div class="menu-item" id="install-item" onclick="installPWA()">
-        <i class="ri-download-cloud-line" style="color: #0ea5e9;"></i> 安装应用
+    <div class="logo"><i class="ri-command-line"></i> NEXUS Admin</div>
+    <div class="menu-item active" onclick="nav('dash')"><i class="ri-dashboard-line"></i> 仪表盘</div>
+    <div class="menu-item" onclick="nav('prod')"><i class="ri-shopping-cart-2-line"></i> 商品管理</div>
+    <div class="menu-item" onclick="nav('order')"><i class="ri-list-check"></i> 订单管理</div>
+    <div class="menu-item" onclick="nav('users')"><i class="ri-user-line"></i> 用户管理</div>
+  <div class="menu-item" onclick="nav('hire')"><i class="ri-user-add-line"></i> 招聘管理</div>
+    <div class="menu-item" onclick="nav('funds')"><i class="ri-money-cny-box-line"></i> 资金明细</div>
+    <div class="menu-item" onclick="nav('chat')">
+        <i class="ri-chat-1-line"></i> 客服聊天
+        <span id="chat-badge-total" class="nav-badge">0</span>
     </div>
 </div>
 
@@ -1103,16 +1053,9 @@
                 </select>
             </div>
 
-            <button onclick="updAnn(this)" style="width: 100%; justify-content: center; margin-bottom: 20px;"><i class="ri-save-line"></i> 更新设置</button>
-
-                        <div id="pwa-install-section" style="margin: 30px 0; padding: 20px; background: #fff; border-radius: 15px; border: 1px dashed #0ea5e9; text-align: center; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-                <i class="ri-download-cloud-2-line" style="font-size: 28px; color: #0ea5e9; display: block; margin-bottom: 8px;"></i>
-                <div style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">安装管理端 App</div>
-                <p style="font-size: 11px; color: #64748b; margin-bottom: 12px;">安装后更流畅，消息提醒更及时</p>
-                <button onclick="installPWA()" style="padding: 8px 20px; font-size: 13px; width: auto; background: #0ea5e9;">立即安装</button>
-            </div>
-        </div>
-    </div>
+            <button onclick="updAnn(this)"><i class="ri-save-line"></i> 更新设置</button>
+        </div>
+    </div>
 
     <!-- 商品管理 -->
     <div id="prod" class="page">
@@ -1308,86 +1251,17 @@
 </div>
 
 <script>
-    const API_BASE = "https://api.xaw888.com";; 
-const socket = io(API_BASE);
-
-    // 解决移动端键盘遮挡的终极方案
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => {
-            const wrapper = document.getElementById('chat-wrapper');
-            if (wrapper && wrapper.classList.contains('active')) {
-                wrapper.style.height = window.visualViewport.height + 'px';
-                // 自动滚动到底部
-                const box = document.getElementById('chat-box');
-                if(box) box.scrollTop = box.scrollHeight;
-            }
+    // 注册 PWA 服务
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js');
         });
     }
 
-   // --- 修正后的 PWA 安装逻辑 ---
-    let deferredPrompt;
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        // 1. 只显示仪表盘里的安装区域 [修改点：删除了侧边栏显示的逻辑]
-        const installBox = document.getElementById('pwa-install-section');
-        if(installBox) installBox.style.display = 'block';
-    });
-
-    async function installPWA() {
-        if (!deferredPrompt) {
-            Swal.fire({
-                title: '安装提示',
-                text: '请通过浏览器菜单选择“安装应用”或“添加到主屏幕”。iOS 用户请点击分享按钮选择“添加到主屏幕”。',
-                icon: 'info'
-            });
-            return;
-        }
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        if (outcome === 'accepted') {
-            document.getElementById('pwa-install-section').style.display = 'none';
-        }
-        deferredPrompt = null;
-    }
-
-   /* 强化 Telegram 式输入框吸附逻辑 */
-    if (window.visualViewport) {
-        const handleResize = () => {
-            const wrapper = document.getElementById('chat-wrapper');
-            // 只有当聊天窗口激活时才执行，防止影响其他页面
-            if (wrapper && wrapper.classList.contains('active')) {
-                const vh = window.visualViewport.height;
-                
-                // 1. 强制高度适配键盘
-                wrapper.style.height = vh + 'px';
-                wrapper.style.position = 'fixed';
-                wrapper.style.top = '0';
-                wrapper.style.left = '0';
-                wrapper.style.width = '100%';
-                
-                // 2. 防止页面整体被顶上去
-                window.scrollTo(0, 0); 
-                
-                // 3. 延时确保输入框可见（关键修复）
-                setTimeout(() => {
-                    const inputArea = document.querySelector('.chat-input-container');
-                    if(inputArea) {
-                        // 强制把输入框滚动到视口底部
-                        inputArea.scrollIntoView(false);
-                    }
-                    // 消息列表滚动到底部
-                    const box = document.getElementById('chat-box');
-                    if(box) box.scrollTop = box.scrollHeight;
-                }, 50);
-            }
-        };
-
-        window.visualViewport.addEventListener('resize', handleResize);
-        window.visualViewport.addEventListener('scroll', handleResize); // 监听滚动以防止抖动
-    }
-    
-    // 防XSS转义函数
+    const API_BASE = "https://api.xaw888.com";; 
+const socket = io(API_BASE);
+    
+    // 防XSS转义函数
     function escapeHtml(text) {
         if (!text) return text;
         return text.toString()
