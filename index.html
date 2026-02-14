@@ -353,16 +353,32 @@
                 transition: all 0.2s;
             }
             
-            .menu-item i { 
-                font-size: 20px; 
-                width: auto;
-                margin-bottom: 2px;
-                display: block;
+           .menu-item i { 
+                font-size: 20px; 
+                width: auto;
+                margin-bottom: 2px;
+                display: block;
+            }
+            /* 新增红点样式修正 */
+            .menu-item { position: relative; }
+            .nav-badge {
+                position: absolute;
+                top: 5px;
+                right: 15%;
+                background: #ef4444;
+                color: white;
+                font-size: 10px;
+                padding: 2px 5px;
+                border-radius: 10px;
+                min-width: 15px;
+                text-align: center;
+                line-height: 1;
+                border: 2px solid white;
             }
-            
-            .main { 
-                padding: 15px; 
-            }
+            
+            .main { 
+                padding: 15px; 
+            }
 
             /* 订单列表卡片化适配 (保持不变) */
             #order-table thead { display: none; }
@@ -1091,9 +1107,20 @@
                 </select>
             </div>
 
-            <button onclick="updAnn(this)"><i class="ri-save-line"></i> 更新设置</button>
-        </div>
-    </div>
+            <button onclick="updAnn(this)"><i class="ri-save-line"></i> 更新设置</button>
+
+            <div id="pwa-install-section" style="margin-top: 50px; padding: 25px; background: white; border-radius: 20px; border: 1px dashed #0ea5e9; text-align: center; display: none;">
+                <div style="background: rgba(14, 165, 233, 0.1); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px;">
+                    <i class="ri-download-cloud-2-line" style="font-size: 30px; color: #0ea5e9;"></i>
+                </div>
+                <h3 style="margin: 0 0 10px; color: #0f172a;">安装管理端 App</h3>
+                <p style="font-size: 13px; color: #64748b; margin-bottom: 20px;">安装到主屏幕，享受全屏操作体验与实时消息通知</p>
+                <button onclick="installPWA()" style="width: 100%; justify-content: center; background: linear-gradient(135deg, #0ea5e9, #6366f1);">
+                    立即安装应用
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- 商品管理 -->
     <div id="prod" class="page">
@@ -1305,22 +1332,46 @@ const socket = io(API_BASE);
         });
     }
 
-    // PWA 安装逻辑
-    let deferredPrompt;
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        document.getElementById('install-item').style.display = 'flex';
-    });
+   // --- 修正后的 PWA 安装逻辑 ---
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        // 改为显示仪表盘里的安装区域
+        const installBox = document.getElementById('pwa-install-section');
+        if(installBox) installBox.style.display = 'block';
+    });
 
-    async function installPWA() {
-        if (!deferredPrompt) return;
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        if (outcome === 'accepted') {
-            document.getElementById('install-item').style.display = 'none';
+    async function installPWA() {
+        if (!deferredPrompt) {
+            Swal.fire({
+                title: '安装提示',
+                text: '请通过浏览器菜单选择“安装应用”或“添加到主屏幕”。iOS 用户请点击分享按钮选择“添加到主屏幕”。',
+                icon: 'info'
+            });
+            return;
         }
-        deferredPrompt = null;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            document.getElementById('pwa-install-section').style.display = 'none';
+        }
+        deferredPrompt = null;
+    }
+
+    /* 修复聊天输入框位置逻辑 */
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            const wrapper = document.getElementById('chat-wrapper');
+            if (wrapper && wrapper.classList.contains('active')) {
+                // 设置容器高度等于视觉高度（减去可能存在的顶部偏移）
+                wrapper.style.height = window.visualViewport.height + 'px';
+                // 强制将页面滚动到顶部，确保输入框不偏移
+                window.scrollTo(0, 0);
+                const box = document.getElementById('chat-box');
+                if(box) box.scrollTop = box.scrollHeight;
+            }
+        });
     }
     
     // 防XSS转义函数
