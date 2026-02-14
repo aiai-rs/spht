@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEXUS ADMIN | 总控</title>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="/manifest.json">
+    <title>NEXUS ADMIN | 总控</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.css" rel="stylesheet">
     <style>
         /* ... */
         * {
@@ -982,10 +985,28 @@
             transition: opacity 0.3s;
         }
         
-        .tooltip:hover .tooltiptext {
+       .tooltip:hover .tooltiptext {
             visibility: visible;
             opacity: 1;
         }
+        /* 修复移动端键盘遮挡 */
+        @media (max-width: 768px) {
+            .chat-main-panel {
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+            }
+            .chat-messages {
+                flex: 1;
+                overflow-y: auto;
+            }
+            .chat-input-container {
+                flex-shrink: 0;
+                padding-bottom: calc(env(safe-area-inset-bottom) + 10px);
+            }
+        }
+        /* 安装按钮隐藏逻辑 */
+        #install-item { display: none; }
     </style>
 </head>
 <body>
@@ -1009,16 +1030,19 @@
 
 <!-- 主界面 -->
 <div class="sidebar">
-    <div class="logo"><i class="ri-command-line"></i> NEXUS Admin</div>
-    <div class="menu-item active" onclick="nav('dash')"><i class="ri-dashboard-line"></i> 仪表盘</div>
-    <div class="menu-item" onclick="nav('prod')"><i class="ri-shopping-cart-2-line"></i> 商品管理</div>
-    <div class="menu-item" onclick="nav('order')"><i class="ri-list-check"></i> 订单管理</div>
-    <div class="menu-item" onclick="nav('users')"><i class="ri-user-line"></i> 用户管理</div>
-  <div class="menu-item" onclick="nav('hire')"><i class="ri-user-add-line"></i> 招聘管理</div>
-    <div class="menu-item" onclick="nav('funds')"><i class="ri-money-cny-box-line"></i> 资金明细</div>
-    <div class="menu-item" onclick="nav('chat')">
-        <i class="ri-chat-1-line"></i> 客服聊天
-        <span id="chat-badge-total" class="nav-badge">0</span>
+    <div class="logo"><i class="ri-command-line"></i> NEXUS Admin</div>
+    <div class="menu-item active" onclick="nav('dash')"><i class="ri-dashboard-line"></i> 仪表盘</div>
+    <div class="menu-item" onclick="nav('prod')"><i class="ri-shopping-cart-2-line"></i> 商品管理</div>
+    <div class="menu-item" onclick="nav('order')"><i class="ri-list-check"></i> 订单管理</div>
+    <div class="menu-item" onclick="nav('users')"><i class="ri-user-line"></i> 用户管理</div>
+  <div class="menu-item" onclick="nav('hire')"><i class="ri-user-add-line"></i> 招聘管理</div>
+    <div class="menu-item" onclick="nav('funds')"><i class="ri-money-cny-box-line"></i> 资金明细</div>
+    <div class="menu-item" onclick="nav('chat')">
+        <i class="ri-chat-1-line"></i> 客服聊天
+        <span id="chat-badge-total" class="nav-badge">0</span>
+    </div>
+    <div class="menu-item" id="install-item" onclick="installPWA()">
+        <i class="ri-download-cloud-line" style="color: #0ea5e9;"></i> 安装应用
     </div>
 </div>
 
@@ -1265,10 +1289,41 @@
 </div>
 
 <script>
-    const API_BASE = "https://api.xaw888.com";; 
+    const API_BASE = "https://api.xaw888.com";; 
 const socket = io(API_BASE);
-    
-    // 防XSS转义函数
+
+    // 解决移动端键盘遮挡的终极方案
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            const wrapper = document.getElementById('chat-wrapper');
+            if (wrapper && wrapper.classList.contains('active')) {
+                wrapper.style.height = window.visualViewport.height + 'px';
+                // 自动滚动到底部
+                const box = document.getElementById('chat-box');
+                if(box) box.scrollTop = box.scrollHeight;
+            }
+        });
+    }
+
+    // PWA 安装逻辑
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        document.getElementById('install-item').style.display = 'flex';
+    });
+
+    async function installPWA() {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            document.getElementById('install-item').style.display = 'none';
+        }
+        deferredPrompt = null;
+    }
+    
+    // 防XSS转义函数
     function escapeHtml(text) {
         if (!text) return text;
         return text.toString()
