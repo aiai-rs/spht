@@ -346,39 +346,33 @@
             }
 
             .menu-item.active {
-                color: #007aff; /* iOS 激活蓝 */
+                color: #007aff; 
                 background: transparent !important;
                 font-weight: 500;
-                transform: translateY(-2px); /* 选中微动效 */
+                transform: none; /* 手机端取消位移，防止乱跳 */
                 transition: all 0.2s;
             }
             
-           .menu-item i { 
-                font-size: 20px; 
-                width: auto;
-                margin-bottom: 2px;
-                display: block;
-            }
-            /* 新增红点样式修正 */
-            .menu-item { position: relative; }
-            .nav-badge {
-                position: absolute;
-                top: 5px;
-                right: 15%;
-                background: #ef4444;
-                color: white;
-                font-size: 10px;
-                padding: 2px 5px;
-                border-radius: 10px;
-                min-width: 15px;
-                text-align: center;
-                line-height: 1;
-                border: 2px solid white;
+            /* 统一图标样式，修复错位 */
+           .menu-item i { 
+                font-size: 21px !important; /* 统一调大图标 */
+                width: auto;
+                margin-bottom: 2px;
+                display: block;
             }
-            
-            .main { 
-                padding: 15px; 
-            }
+
+            /* --- 修复红点定位 --- */
+            .menu-item { position: relative; }
+            .nav-badge { top: 2px; right: 20%; } /* 调整红点位置到图标右上角 */
+            
+            /* 核心修复：消除页面顶部白边 */
+            .main { 
+                padding: 0 15px 15px 15px; /* 上0，左右下15 */
+                padding-top: env(safe-area-inset-top); /* 仅保留刘海屏安全距离 */
+            }
+            
+            /* 隐藏侧边栏的安装按钮 */
+            #install-item { display: none !important; }
 
             /* 订单列表卡片化适配 (保持不变) */
             #order-table thead { display: none; }
@@ -1022,7 +1016,9 @@
             }
         }
         /* 安装按钮隐藏逻辑 */
-        #install-item { display: none; }
+        /* 安装按钮默认隐藏，JS控制显示，或者直接开启用于测试 */
+        /* #install-item { display: none; } */ 
+        #install-item { display: flex; } /* 强制显示出来 */
     </style>
 </head>
 <body>
@@ -1107,17 +1103,13 @@
                 </select>
             </div>
 
-            <button onclick="updAnn(this)"><i class="ri-save-line"></i> 更新设置</button>
+            <button onclick="updAnn(this)" style="width: 100%; justify-content: center; margin-bottom: 20px;"><i class="ri-save-line"></i> 更新设置</button>
 
-            <div id="pwa-install-section" style="margin-top: 50px; padding: 25px; background: white; border-radius: 20px; border: 1px dashed #0ea5e9; text-align: center; display: none;">
-                <div style="background: rgba(14, 165, 233, 0.1); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px;">
-                    <i class="ri-download-cloud-2-line" style="font-size: 30px; color: #0ea5e9;"></i>
-                </div>
-                <h3 style="margin: 0 0 10px; color: #0f172a;">安装管理端 App</h3>
-                <p style="font-size: 13px; color: #64748b; margin-bottom: 20px;">安装到主屏幕，享受全屏操作体验与实时消息通知</p>
-                <button onclick="installPWA()" style="width: 100%; justify-content: center; background: linear-gradient(135deg, #0ea5e9, #6366f1);">
-                    立即安装应用
-                </button>
+                        <div id="pwa-install-section" style="margin: 30px 0; padding: 20px; background: #fff; border-radius: 15px; border: 1px dashed #0ea5e9; text-align: center; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                <i class="ri-download-cloud-2-line" style="font-size: 28px; color: #0ea5e9; display: block; margin-bottom: 8px;"></i>
+                <div style="font-weight: bold; font-size: 14px; margin-bottom: 5px;">安装管理端 App</div>
+                <p style="font-size: 11px; color: #64748b; margin-bottom: 12px;">安装后更流畅，消息提醒更及时</p>
+                <button onclick="installPWA()" style="padding: 8px 20px; font-size: 13px; width: auto; background: #0ea5e9;">立即安装</button>
             </div>
         </div>
     </div>
@@ -1333,16 +1325,16 @@ const socket = io(API_BASE);
     }
 
    // --- 修正后的 PWA 安装逻辑 ---
-    let deferredPrompt;
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        // 改为显示仪表盘里的安装区域
-        const installBox = document.getElementById('pwa-install-section');
-        if(installBox) installBox.style.display = 'block';
-    });
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        // 1. 只显示仪表盘里的安装区域 [修改点：删除了侧边栏显示的逻辑]
+        const installBox = document.getElementById('pwa-install-section');
+        if(installBox) installBox.style.display = 'block';
+    });
 
-    async function installPWA() {
+    async function installPWA() {
         if (!deferredPrompt) {
             Swal.fire({
                 title: '安装提示',
@@ -1359,19 +1351,40 @@ const socket = io(API_BASE);
         deferredPrompt = null;
     }
 
-    /* 修复聊天输入框位置逻辑 */
+   /* 强化 Telegram 式输入框吸附逻辑 */
     if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => {
+        const handleResize = () => {
             const wrapper = document.getElementById('chat-wrapper');
+            // 只有当聊天窗口激活时才执行，防止影响其他页面
             if (wrapper && wrapper.classList.contains('active')) {
-                // 设置容器高度等于视觉高度（减去可能存在的顶部偏移）
-                wrapper.style.height = window.visualViewport.height + 'px';
-                // 强制将页面滚动到顶部，确保输入框不偏移
-                window.scrollTo(0, 0);
-                const box = document.getElementById('chat-box');
-                if(box) box.scrollTop = box.scrollHeight;
+                const vh = window.visualViewport.height;
+                
+                // 1. 强制高度适配键盘
+                wrapper.style.height = vh + 'px';
+                wrapper.style.position = 'fixed';
+                wrapper.style.top = '0';
+                wrapper.style.left = '0';
+                wrapper.style.width = '100%';
+                
+                // 2. 防止页面整体被顶上去
+                window.scrollTo(0, 0); 
+                
+                // 3. 延时确保输入框可见（关键修复）
+                setTimeout(() => {
+                    const inputArea = document.querySelector('.chat-input-container');
+                    if(inputArea) {
+                        // 强制把输入框滚动到视口底部
+                        inputArea.scrollIntoView(false);
+                    }
+                    // 消息列表滚动到底部
+                    const box = document.getElementById('chat-box');
+                    if(box) box.scrollTop = box.scrollHeight;
+                }, 50);
             }
-        });
+        };
+
+        window.visualViewport.addEventListener('resize', handleResize);
+        window.visualViewport.addEventListener('scroll', handleResize); // 监听滚动以防止抖动
     }
     
     // 防XSS转义函数
