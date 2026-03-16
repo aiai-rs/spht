@@ -1994,19 +1994,28 @@ function renderUsers() {
     }
 
     async function pinProd(id) {
-        try {
-            await fetch(`${API_BASE}/api/admin/product/pin/${id}`, { 
-                method: 'POST', 
-                headers: getAuthHeaders() 
-            });
-            
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/product/pin/${id}`, { 
+            method: 'POST', 
+            headers: getAuthHeaders() 
+        });
+        
+        // 解析返回结果
+        const d = await res.json();
+
+        if(d.success) {
             showNotification('成功', '置顶状态已更新', 'success');
-            refresh();
-        } catch (e) {
-            showNotification('错误', '操作失败', 'danger');
-            console.error('置顶商品错误:', e);
+            // 【关键修改】执行 refresh() 后，由于你之前已经改好了前端排序逻辑，
+            // 列表会根据最新的 is_pinned 状态重新排队，置顶商品会瞬间跳到第一行
+            await refresh(); 
+        } else {
+            showNotification('失败', d.msg || '操作未成功', 'warning');
         }
+    } catch (e) {
+        showNotification('错误', '网络请求失败', 'danger');
+        console.error('置顶商品错误:', e);
     }
+}
 
 // ================= 聊天管理 (新版) =================
     function renderChats() {
