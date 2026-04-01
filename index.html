@@ -675,6 +675,7 @@
         <div style="display: flex; gap: 12px; margin-bottom: 24px;">
             <button onclick="openProdModal()"><i class="ri-add-line"></i> 添加商品</button>
             <button class="btn-secondary" onclick="openCatSortModal()"><i class="ri-sort-desc"></i> 分类排序</button>
+            <button class="btn-secondary" onclick="restockAll()" style="color: var(--primary); border-color: var(--primary-light);"><i class="ri-refresh-line"></i> 一键满库存</button>
         </div>
         <div class="card" style="padding: 0; overflow:hidden;">
             <div style="padding: 20px 24px; border-bottom: 1px solid var(--border-color);">
@@ -1466,6 +1467,44 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
             if(d.success) { showNotification('成功', '置顶状态已刷新', 'success'); await refresh(); } 
             else showNotification('失败', d.msg || '操作异常', 'warning');
         } catch (e) { showNotification('错误', '请求失败', 'danger'); }
+    }
+
+    // [新增] 一键补库存逻辑
+    async function restockAll() {
+        const { value: stockAmount } = await Swal.fire({
+            title: '一键满库存',
+            input: 'number',
+            inputLabel: '将【所有商品】的库存统一修改为：',
+            inputValue: 999, // 默认推荐填 999
+            showCancelButton: true,
+            confirmButtonText: '确定补货',
+            cancelButtonText: '取消',
+            confirmButtonColor: 'var(--primary)',
+            inputValidator: (value) => {
+                if (!value || value < 0) {
+                    return '请输入有效的库存数量！'
+                }
+            }
+        });
+
+        if (stockAmount) {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/product/restock_all`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ amount: stockAmount })
+                });
+                const d = await res.json();
+                if(d.success) {
+                    showNotification('成功', `所有商品库存已重置为 ${stockAmount}`, 'success');
+                    refresh();
+                } else {
+                    showNotification('错误', d.msg || '操作失败', 'danger');
+                }
+            } catch(e) {
+                showNotification('错误', '网络异常', 'danger');
+            }
+        }
     }
 
     let originalRenderChats = function() {
