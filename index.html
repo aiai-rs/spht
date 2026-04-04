@@ -279,7 +279,7 @@
         .tag.cancelled { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
         
         /* === 统计卡片 === */
-        .stats-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stats-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
         .stat-card { 
             background: var(--bg-card); 
             border-radius: var(--radius-lg);
@@ -370,7 +370,7 @@
         .msg-row.user { justify-content: flex-start; }
         .msg-row.admin { justify-content: flex-end; }
 
-        .msg-bubble { max-width: 70%; padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; word-wrap: break-word; }
+        .msg-bubble { width: fit-content; max-width: 85%; padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; word-wrap: break-word; word-break: break-all; }
         .msg-row.user .msg-bubble { background: #ffffff; color: var(--text-main); border: 1px solid var(--border-color); border-bottom-left-radius: 4px; }
         .msg-row.admin .msg-bubble { background: var(--primary); color: #ffffff; border-bottom-right-radius: 4px; }
         .msg-time { font-size: 10px; margin-top: 4px; opacity: 0.7; }
@@ -533,8 +533,27 @@
     <!-- 仪表盘 -->
     <div id="dash" class="page active">
         <h2 style="font-size:24px; margin-bottom: 24px;">概览</h2>
+        
+        <div class="card" style="margin-bottom: 16px; padding: 16px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div>
+                    <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; color:var(--primary);">Boss 网站 访问统计</div>
+                    <div style="display: flex; justify-content: space-between; font-size: 14px;">
+                        <span>今日: <b id="boss-today">0</b></span>
+                        <span>昨日: <b id="boss-yesterday">0</b></span>
+                    </div>
+                </div>
+                <div style="border-left: 1px solid var(--border-color); padding-left: 20px;">
+                    <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; color:var(--warning);">龍哥 网站 访问统计</div>
+                    <div style="display: flex; justify-content: space-between; font-size: 14px;">
+                        <span>今日: <b id="lg-today">0</b></span>
+                        <span>昨日: <b id="lg-yesterday">0</b></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="stats-container">
-            <div class="stat-card">
                 <div class="stat-label"><i class="ri-shopping-cart-line"></i> 今日订单</div>
                 <div class="stat-value" id="today-orders">0</div>
                 <div style="font-size:12px; color:var(--text-muted); margin-top:8px;" id="today-amount">金额: 0.00 USDT</div>
@@ -821,7 +840,11 @@
 
 <script>
    const API_BASE = "https://shy-svqc.onrender.com";
-    const socket = io(API_BASE);
+    const socket = io(API_BASE, {
+        transports: ['websocket'],
+        upgrade: false,
+        reconnection: true
+    });
     
     // 防XSS转义函数
     function escapeHtml(text) {
@@ -1028,6 +1051,14 @@
         document.getElementById('pending-orders').textContent = pendingOrders.length;
         document.getElementById('total-users').textContent = curData.users?.length || 0;
         document.getElementById('total-products').textContent = curData.products?.length || 0;
+
+        const v = curData.visits || [];
+        const bData = v.find(i => !i.domain.includes('8888')) || {today:0, yesterday:0};
+        const lData = v.find(i => i.domain.includes('8888')) || {today:0, yesterday:0};
+        document.getElementById('boss-today').innerText = bData.today;
+        document.getElementById('boss-yesterday').innerText = bData.yesterday;
+        document.getElementById('lg-today').innerText = lData.today;
+        document.getElementById('lg-yesterday').innerText = lData.yesterday;
     }
     
     function renderOrders() {
@@ -1571,7 +1602,16 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
         const bossName = source.includes('8888') ? '龍哥' : 'Boss';
         const typeStr = isHR ? '直聘沟通' : '在线客服';
 
-        document.getElementById('chat-title-uid').innerHTML = `<span style="color:var(--primary);margin-right:8px;">[${bossName}]</span><span style="color:var(--success);margin-right:8px;">[${typeStr}]</span> UID: ${rawUid}`;
+        document.getElementById('chat-title-uid').innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px; width:100%;">
+                <span style="color:var(--primary);">[${bossName}]</span>
+                <span style="color:var(--success);">[${typeStr}]</span> 
+                <span>UID: ${rawUid}</span>
+                <button onclick="clearChatHistory('${sid}')" style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center;" title="清空聊天记录">
+                    <i class="ri-delete-bin-7-line" style="font-size:18px;"></i>
+                </button>
+            </div>
+        `;
 
         if(curData.chats[sid]) { curData.chats[sid].forEach(m => { if(m.sender === 'user') m.is_read = true; }); }
         originalRenderChats(); updateBadge(); renderMessages(sid);
@@ -1593,7 +1633,7 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
             }
             return `
             <div class="msg-row ${isMe ? 'admin' : 'user'}">
-                <div style="display:flex; flex-direction:column; max-width:75%; ${isMe?'align-items:flex-end;':'align-items:flex-start;'}">
+                <div style="display:flex; flex-direction:column; width:100%; ${isMe?'align-items:flex-end;':'align-items:flex-start;'}">
                     <div class="msg-bubble" style="${contentHtml.includes('<img') ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
                     <div class="msg-time">${time}</div>
                 </div>
@@ -1851,7 +1891,9 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
         if (!curData.chats[data.session_id]) curData.chats[data.session_id] = [];
         curData.chats[data.session_id].push(data);
 
-        if (curChat === data.session_id) {
+        const isChatPageActive = document.getElementById('chat').classList.contains('active');
+
+        if (isChatPageActive && curChat === data.session_id) {
             const box = document.getElementById('chat-box');
             const time = new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             let contentHtml = escapeHtml(data.content);
@@ -1859,7 +1901,7 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
                 contentHtml = `<img src="${data.content}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="window.open(this.src)">`;
             }
             const div = document.createElement('div'); div.className = `msg-row ${data.sender==='admin'?'admin':'user'}`;
-            div.innerHTML = `<div style="display:flex; flex-direction:column; max-width:75%; ${data.sender==='admin'?'align-items:flex-end;':'align-items:flex-start;'}"><div class="msg-bubble" style="${contentHtml.includes('<img')?'background:transparent; padding:0; border:none;':''}">${contentHtml}</div><div class="msg-time">${time}</div></div>`;
+            div.innerHTML = `<div style="display:flex; flex-direction:column; width:100%; ${data.sender==='admin'?'align-items:flex-end;':'align-items:flex-start;'}"><div class="msg-bubble" style="${contentHtml.includes('<img')?'background:transparent; padding:0; border:none;':''}">${contentHtml}</div><div class="msg-time">${time}</div></div>`;
             box.appendChild(div); box.scrollTop = box.scrollHeight;
             if(data.sender === 'user') fetch(`${API_BASE}/api/admin/chat/read`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: data.session_id }) });
         } else {
@@ -1872,6 +1914,38 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
         }
         updateBadge();
     });
+
+    // 新增：清空聊天记录的逻辑
+    async function clearChatHistory(sid) {
+        const result = await Swal.fire({
+            title: '确认清空记录？',
+            text: "该用户的全部聊天历史将被永久删除",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: 'var(--danger)',
+            confirmButtonText: '确定清空',
+            cancelButtonText: '取消'
+        });
+
+        if (result.isConfirmed) {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/chat/clear`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ sessionId: sid })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    showNotification('成功', '记录已清空', 'success');
+                    if (curData.chats[sid]) curData.chats[sid] = [];
+                    renderMessages(sid);
+                    originalRenderChats();
+                }
+            } catch (e) {
+                showNotification('错误', '清空失败', 'danger');
+            }
+        }
+    }
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'r' && e.ctrlKey) { e.preventDefault(); refresh(); }
