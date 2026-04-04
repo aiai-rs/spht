@@ -1523,16 +1523,28 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
             const lastMsg = messages.length > 0 ? messages[messages.length-1] : { content: '...', created_at: new Date() };
             const unreadCount = messages.filter(m => m.sender === 'user' && !m.is_read).length;
             const timeStr = new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const uid = sid.replace('user_', '');
+            
+            const isHR = sid.startsWith('hr_');
+            let rawUid = sid;
+            if (isHR) rawUid = rawUid.replace('hr_', '');
+            rawUid = rawUid.replace('user_', '').replace('guest_', '访客_');
+            
             const source = messages[0]?.source || '';
-            const sourceTag = source.includes('8888') ? '<span style="color:var(--warning)">龍</span>' : '<span style="color:var(--primary)">B</span>';
+            const bossName = source.includes('8888') ? '龍哥' : 'Boss';
+            const bossColor = source.includes('8888') ? '#d97706' : '#4f46e5';
+            const bossBg = source.includes('8888') ? '#fef3c7' : '#e0e7ff';
+            const bossTag = `<span class="tag" style="background:${bossBg}; color:${bossColor}; padding:0 4px; font-size:10px; margin-right:4px;">${bossName}</span>`;
+            
+            const chatTypeTag = isHR
+                ? `<span class="tag" style="background:#ecfdf5; color:#059669; padding:0 4px; font-size:10px; margin-right:4px;">直聘</span>`
+                : `<span class="tag" style="background:#f3f4f6; color:#4b5563; padding:0 4px; font-size:10px; margin-right:4px;">客服</span>`;
 
             return `
             <div class="chat-item ${curChat === sid ? 'active' : ''}" onclick="openChat('${sid}')">
-                <div class="chat-avatar">${uid.slice(-2)}</div>
+                <div class="chat-avatar">${rawUid.slice(-2)}</div>
                 <div class="chat-info">
                     <div class="chat-top">
-                        <span class="chat-name">${sourceTag} UID: ${uid}</span>
+                        <span class="chat-name">${bossTag}${chatTypeTag}UID: ${rawUid}</span>
                         <span class="chat-time">${timeStr}</span>
                     </div>
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1549,8 +1561,17 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
         document.getElementById('chat-wrapper').classList.add('active');
         if(window.innerWidth <= 768) { document.body.style.overflow = 'hidden'; document.body.style.height = '100dvh'; }
         
-        const uid = sid.replace('user_', '');
-        document.getElementById('chat-title-uid').innerText = `对话 - UID: ${uid}`;
+        const isHR = sid.startsWith('hr_');
+        let rawUid = sid;
+        if (isHR) rawUid = rawUid.replace('hr_', '');
+        rawUid = rawUid.replace('user_', '').replace('guest_', '访客_');
+        
+        const messages = curData.chats[sid] || [];
+        const source = messages[0]?.source || '';
+        const bossName = source.includes('8888') ? '龍哥' : 'Boss';
+        const typeStr = isHR ? '直聘沟通' : '在线客服';
+
+        document.getElementById('chat-title-uid').innerHTML = `<span style="color:var(--primary);margin-right:8px;">[${bossName}]</span><span style="color:var(--success);margin-right:8px;">[${typeStr}]</span> UID: ${rawUid}`;
 
         if(curData.chats[sid]) { curData.chats[sid].forEach(m => { if(m.sender === 'user') m.is_read = true; }); }
         originalRenderChats(); updateBadge(); renderMessages(sid);
@@ -1842,7 +1863,11 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
             box.appendChild(div); box.scrollTop = box.scrollHeight;
             if(data.sender === 'user') fetch(`${API_BASE}/api/admin/chat/read`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: data.session_id }) });
         } else {
-            showNotification('新消息', `收到来自客户的新消息`, 'info');
+            const isHR = data.session_id.startsWith('hr_');
+            const source = data.source || '';
+            const bossName = source.includes('8888') ? '龍哥' : 'Boss';
+            const typeStr = isHR ? '直聘申请' : '客服咨询';
+            showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info');
             originalRenderChats();
         }
         updateBadge();
