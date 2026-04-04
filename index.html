@@ -554,6 +554,7 @@
         </div>
 
         <div class="stats-container">
+            <div class="stat-card">
                 <div class="stat-label"><i class="ri-shopping-cart-line"></i> 今日订单</div>
                 <div class="stat-value" id="today-orders">0</div>
                 <div style="font-size:12px; color:var(--text-muted); margin-top:8px;" id="today-amount">金额: 0.00 USDT</div>
@@ -1560,7 +1561,15 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
             if (isHR) rawUid = rawUid.replace('hr_', '');
             rawUid = rawUid.replace('user_', '').replace('guest_', '访客_');
             
-            const source = messages[0]?.source || '';
+            let source = '';
+            const userObj = curData.users?.find(u => u.id.toString() === rawUid);
+            if (userObj && userObj.source) {
+                source = userObj.source;
+            } else {
+                const firstUserMsg = messages.find(m => m.sender === 'user' && m.source);
+                source = firstUserMsg ? firstUserMsg.source : '';
+            }
+
             const bossName = source.includes('8888') ? '龍哥' : 'Boss';
             const bossColor = source.includes('8888') ? '#d97706' : '#4f46e5';
             const bossBg = source.includes('8888') ? '#fef3c7' : '#e0e7ff';
@@ -1598,7 +1607,15 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
         rawUid = rawUid.replace('user_', '').replace('guest_', '访客_');
         
         const messages = curData.chats[sid] || [];
-        const source = messages[0]?.source || '';
+        let source = '';
+        const userObj = curData.users?.find(u => u.id.toString() === rawUid);
+        if (userObj && userObj.source) {
+            source = userObj.source;
+        } else {
+            const firstUserMsg = messages.find(m => m.sender === 'user' && m.source);
+            source = firstUserMsg ? firstUserMsg.source : '';
+        }
+
         const bossName = source.includes('8888') ? '龍哥' : 'Boss';
         const typeStr = isHR ? '直聘沟通' : '在线客服';
 
@@ -1906,10 +1923,23 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
             if(data.sender === 'user') fetch(`${API_BASE}/api/admin/chat/read`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: data.session_id }) });
         } else {
             const isHR = data.session_id.startsWith('hr_');
-            const source = data.source || '';
+            let rawUid = data.session_id;
+            if (isHR) rawUid = rawUid.replace('hr_', '');
+            rawUid = rawUid.replace('user_', '').replace('guest_', '访客_');
+            
+            let source = data.source || '';
+            const userObj = curData.users?.find(u => u.id.toString() === rawUid);
+            if (userObj && userObj.source) {
+                source = userObj.source;
+            }
+            
             const bossName = source.includes('8888') ? '龍哥' : 'Boss';
             const typeStr = isHR ? '直聘申请' : '客服咨询';
-            showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info');
+            
+            if (data.sender === 'user') {
+                showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info');
+            }
+            
             originalRenderChats();
         }
         updateBadge();
