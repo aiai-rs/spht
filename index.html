@@ -479,7 +479,7 @@
         .page-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
 
         .sortable-list { display: flex; flex-direction: column; gap: 8px; }
-        .sortable-item { background: #ffffff; border: 1px solid var(--border-color); padding: 12px 16px; border-radius: var(--radius-md); display: flex; align-items: center; gap: 12px; cursor: grab; font-size: 14px; box-shadow: var(--shadow-sm); }
+        .sortable-item { background: #ffffff; border: 1px solid var(--border-color); padding: 12px 16px; border-radius: var(--radius-md); display: flex; align-items: center; gap: 12px; cursor: grab; font-size: 14px; box-shadow: var(--shadow-sm); user-select: none; touch-action: pan-y; }
         .sortable-ghost { opacity: 0.5; background: var(--primary-light); border: 1px dashed var(--primary); }
         .drag-handle { color: var(--text-muted); cursor: grab; touch-action: none; }
 
@@ -488,6 +488,7 @@
         .hire-del:hover { background: #fee2e2; color: var(--danger); }
     </style>
     <link rel="manifest" href="manifest.json">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="NEXUS总控">
@@ -1446,24 +1447,26 @@
     }
 
    return `
-    <div class="prod-row" style="gap:12px;">
-        <input type="checkbox" class="prod-checkbox" value="${p.id}" style="width:16px; height:16px; margin:0; box-shadow:none; flex-shrink:0;">
-        <div style="flex:1; display:flex; align-items:center; min-width:0;">
+    <div class="user-item" style="flex-direction:column; gap:12px;">
+        <div style="display:flex; width:100%; align-items:center; gap:12px;">
+            <input type="checkbox" class="prod-checkbox" value="${p.id}" style="width:16px; height:16px; margin:0; box-shadow:none; flex-shrink:0;">
             ${imgHtml}
-            <div style="min-width:0; padding-right:16px;">
+            <div style="flex:1; min-width:0;">
                 <div style="color:var(--text-main); font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(p.name)}</div>
                 <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">
                     <span style="color:var(--success); font-weight:600;">${p.price} USDT</span>
-                    ${p.is_pinned ? '<span style="color:var(--warning); margin-left:8px;"><i class="ri-pushpin-fill"></i> 置顶</span>' : ''}
-                    ${p.is_hot ? '<span style="color:#ef4444; margin-left:8px;"><i class="ri-fire-fill"></i> 热销</span>' : ''}
                 </div>
             </div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                ${p.is_pinned ? '<span class="tag" style="background:#fffbeb; color:#d97706; border-color:#fde68a;"><i class="ri-pushpin-fill"></i> 已置顶</span>' : ''}
+                ${p.is_hot ? '<span class="tag" style="background:#fef2f2; color:#ef4444; border-color:#fecaca;"><i class="ri-fire-fill"></i> 热销中</span>' : ''}
+            </div>
         </div>
-        <div style="display:flex; gap:8px;">
-            <button class="action-btn" onclick="setSingleHotProd(${p.id}, ${!p.is_hot})" title="${p.is_hot ? '取消热销' : '设为热销'}" style="${p.is_hot ? 'color:#ef4444;' : ''}"><i class="ri-fire-${p.is_hot ? 'fill' : 'line'}"></i></button>
-            <button class="action-btn" onclick="pinProd(${p.id})" title="${p.is_pinned ? '取消置顶' : '置顶'}"><i class="ri-pushpin-${p.is_pinned ? 'fill' : 'line'}"></i></button>
-            <button class="action-btn" onclick="editProd(curData.products.find(x => x.id === ${p.id}))"><i class="ri-edit-line"></i> 编辑</button>
-            <button class="action-btn" onclick="delProd(${p.id})" style="color:var(--danger);"><i class="ri-delete-bin-line"></i></button>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px; width:100%; margin-top:4px;">
+            <button class="btn-secondary" onclick="setSingleHotProd('${p.id}', ${!p.is_hot})" style="padding:8px 0; font-size:13px; width:100%; justify-content:center; ${p.is_hot ? 'color:var(--danger); border-color:#fecaca;' : ''}"><i class="ri-fire-${p.is_hot ? 'fill' : 'line'}"></i> 热销</button>
+            <button class="btn-secondary" onclick="pinProd('${p.id}')" style="padding:8px 0; font-size:13px; width:100%; justify-content:center; ${p.is_pinned ? 'color:var(--warning); border-color:#fde68a;' : ''}"><i class="ri-pushpin-${p.is_pinned ? 'fill' : 'line'}"></i> 置顶</button>
+            <button class="btn-secondary" onclick="editProd('${p.id}')" style="padding:8px 0; font-size:13px; color:var(--primary); border-color:var(--border-focus); width:100%; justify-content:center;"><i class="ri-edit-line"></i> 编辑</button>
+            <button class="btn-secondary" onclick="delProd('${p.id}')" style="padding:8px 0; font-size:13px; color:var(--danger); border-color:#fecaca; width:100%; justify-content:center;"><i class="ri-delete-bin-line"></i> 删除</button>
         </div>
     </div>`;
 }).join('');
@@ -1471,12 +1474,16 @@
         container.innerHTML = tabsHtml + `<div style="margin-top: 16px; border:1px solid var(--border-color); border-radius:var(--radius-lg); overflow:hidden;">${listHtml}</div>`;
     }
 
+    let sortableInstance = null;
     function renderCategorySort() {
         const container = document.getElementById('cat-sort-list');
         if (!curData.products) return;
         const cats = [...new Set(curData.products.map(p => p.category))];
-        container.innerHTML = cats.map(cat => `<div class="sortable-item" data-cat="${escapeHtml(cat)}"><i class="ri-draggable drag-handle"></i><span>${escapeHtml(cat)}</span></div>`).join('');
-        new Sortable(container, { animation: 200, ghostClass: 'sortable-ghost', handle: '.drag-handle' });
+        container.innerHTML = cats.map(cat => `<div class="sortable-item" data-cat="${escapeHtml(cat)}"><i class="ri-drag-move-2-line drag-handle"></i><span>${escapeHtml(cat)}</span></div>`).join('');
+        if (sortableInstance) {
+            sortableInstance.destroy();
+        }
+        sortableInstance = new Sortable(container, { animation: 200, ghostClass: 'sortable-ghost' });
     }
 
     function openCatSortModal() { renderCategorySort(); document.getElementById('cat-sort-modal').style.display = 'flex'; }
@@ -1519,7 +1526,9 @@
         else { sel.value = ''; input.style.display = 'none'; input.value = ''; }
     }
 
-    function editProd(p) {
+    function editProd(pid) {
+        const p = curData.products.find(x => String(x.id) === String(pid));
+        if (!p) return showNotification('错误', '找不到该商品', 'danger');
         document.getElementById('prod-title').innerHTML = `编辑商品`;
 document.getElementById('p-id').value = p.id;
         document.getElementById('p-name').value = p.name;
