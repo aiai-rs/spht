@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -625,10 +624,6 @@
                     <input id="p-price">
                 </div>
                 <div class="form-group">
-                    <label>库存</label>
-                    <input id="p-stock" type="number">
-                </div>
-                <div class="form-group">
                     <label>商品类型</label>
                     <select id="p-type">
                         <option value="virtual">虚拟商品</option>
@@ -692,13 +687,15 @@
 
     <!-- 商品管理页 -->
     <div id="prod" class="page">
-        <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+        <div style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap:wrap;">
             <button onclick="openProdModal()"><i class="ri-add-line"></i> 添加商品</button>
             <button class="btn-secondary" onclick="openCatSortModal()"><i class="ri-sort-desc"></i> 分类排序</button>
-            <button class="btn-secondary" onclick="restockAll()" style="color: var(--primary); border-color: var(--primary-light);"><i class="ri-refresh-line"></i> 一键满库存</button>
+            <button class="btn-secondary" onclick="batchHotProd(true)" style="color: #ef4444; border-color: #fecaca;"><i class="ri-fire-fill"></i> 批量设为热销</button>
+            <button class="btn-secondary" onclick="batchHotProd(false)"><i class="ri-fire-line"></i> 取消热销</button>
         </div>
         <div class="card" style="padding: 0; overflow:hidden;">
-            <div style="padding: 20px 24px; border-bottom: 1px solid var(--border-color);">
+            <div style="padding: 20px 24px; border-bottom: 1px solid var(--border-color); display:flex; gap:12px; align-items:center;">
+                <input type="checkbox" id="check-all-prods" onchange="toggleAllProds(this)" style="width:16px; height:16px; margin:0; box-shadow:none;">
                 <h2 style="margin:0;"><i class="ri-shopping-bag-3-line"></i> 商品列表</h2>
             </div>
             <div style="padding: 20px 24px;">
@@ -756,7 +753,14 @@
         <div class="card" style="padding:0; overflow:hidden;">
             <div style="padding: 20px 24px; border-bottom: 1px solid var(--border-color); display:flex; flex-wrap:wrap; gap:16px; justify-content:space-between; align-items:center;">
                 <h2 style="margin:0;"><i class="ri-group-line"></i> 用户列表 (<span id="user-count">0</span>)</h2>
-                <input type="text" id="user-search" placeholder="搜索 UID 或 联系方式..." style="width: 240px;" onkeyup="searchUsers()">
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <select id="user-source-filter" onchange="renderUsers()" style="width:100px; padding:6px 10px; font-size:13px; height:auto; min-height:0;">
+                        <option value="all">全部</option>
+                        <option value="boss">Boss</option>
+                        <option value="longge">龙哥</option>
+                    </select>
+                    <input type="text" id="user-search" placeholder="搜索 UID 或 联系方式..." style="width: 200px;" onkeyup="searchUsers()">
+                </div>
             </div>
             <div style="padding: 20px 24px;">
                 <div class="user-list" id="user-list"></div>
@@ -810,8 +814,13 @@
     <div id="chat" class="page">
         <div class="chat-container" id="chat-wrapper">
             <div class="chat-users-panel">
-                <div style="padding:16px; border-bottom:1px solid var(--border-color); font-weight:600; color:var(--text-main); font-size:14px; position:sticky; top:0; background:white; z-index:10;">
-                    近期会话
+                <div style="padding:16px; border-bottom:1px solid var(--border-color); font-weight:600; color:var(--text-main); font-size:14px; position:sticky; top:0; background:white; z-index:10; display:flex; justify-content:space-between; align-items:center;">
+                    <span>近期会话</span>
+                    <select id="chat-source-filter" onchange="originalRenderChats()" style="width:100px; padding:4px 8px; font-size:12px; height:auto; min-height:0; box-shadow:none;">
+                        <option value="all">全部</option>
+                        <option value="boss">Boss</option>
+                        <option value="longge">龙哥</option>
+                    </select>
                 </div>
                 <div id="chat-users"></div>
             </div>
@@ -829,6 +838,10 @@
                 </div>
                 
                 <div class="chat-input-container">
+                    <input type="file" id="admin-chat-img" accept="image/*" style="display:none;" onchange="sendAdminChatImage(this)">
+                    <button class="btn-soft" style="width:40px; height:40px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-secondary);" onclick="document.getElementById('admin-chat-img').click()">
+                        <i class="ri-image-add-line" style="font-size:20px;"></i>
+                    </button>
                     <input id="reply-in" type="text" style="flex:1;" placeholder="输入回复内容..." onkeypress="if(event.key === 'Enter') reply(this)">
                     <button onclick="reply(this)">
                         <i class="ri-send-plane-fill" style="font-size:18px;"></i>
@@ -1218,10 +1231,19 @@
     
     function renderUsers() {
         const users = curData.users || [];
-        document.getElementById('user-count').textContent = users.length;
+        
+        const filterVal = document.getElementById('user-source-filter') ? document.getElementById('user-source-filter').value : 'all';
+        let baseUsers = users;
+        if (filterVal !== 'all') {
+            baseUsers = users.filter(user => {
+                const isLg = (user.source || '').includes('8888');
+                return filterVal === 'longge' ? isLg : !isLg;
+            });
+        }
+        document.getElementById('user-count').textContent = baseUsers.length;
         
         const searchTerm = document.getElementById('user-search').value.toLowerCase();
-        let filteredUsers = searchTerm ? users.filter(user => (user.contact && user.contact.toLowerCase().includes(searchTerm)) || (user.id && user.id.toString().includes(searchTerm))) : users;
+        let filteredUsers = searchTerm ? baseUsers.filter(user => (user.contact && user.contact.toLowerCase().includes(searchTerm)) || (user.id && user.id.toString().includes(searchTerm))) : baseUsers;
         
         const userList = document.getElementById('user-list');
         if (filteredUsers.length === 0) {
@@ -1359,35 +1381,43 @@
         `;
 
         const listHtml = filteredList.length === 0 ? '<div style="text-align:center; padding:20px; color:var(--text-muted);">此分类为空</div>' : filteredList.map(p => {
-            let imgHtml = '<div style="width:48px; height:48px; background:var(--bg-body); border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; color:var(--text-muted); margin-right:16px;"><i class="ri-image-line"></i></div>';
-            try {
-                const images = p.image_url ? JSON.parse(p.image_url) : [];
-                if (images.length > 0) {
-                    let firstImage = images[0];
-                    if (!firstImage.startsWith('data:') && !firstImage.startsWith('http')) firstImage = `${API_BASE}${firstImage}`;
-                    imgHtml = `<img src="${firstImage}" style="width:48px; height:48px; object-fit:cover; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-right:16px;">`;
-                }
-            } catch(e) {} 
+    let imgHtml = '<div style="width:48px; height:48px; background:var(--bg-body); border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; color:var(--text-muted); margin-right:16px;"><i class="ri-image-line"></i></div>';
+    let images = [];
+    try {
+        images = p.image_url ? JSON.parse(p.image_url) : [];
+    } catch(e) {
+        if (p.image_url) {
+            images = [p.image_url];
+        }
+    }
+    if (images.length > 0) {
+        let firstImage = images[0];
+        if (!firstImage.startsWith('data:') && !firstImage.startsWith('http')) firstImage = `${API_BASE}${firstImage}`;
+        imgHtml = `<img src="${firstImage}" style="width:48px; height:48px; object-fit:cover; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-right:16px;">`;
+    }
 
-            return `
-            <div class="prod-row">
-                <div style="flex:1; display:flex; align-items:center; min-width:0;">
-                    ${imgHtml}
-                    <div style="min-width:0; padding-right:16px;">
-                        <div style="color:var(--text-main); font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(p.name)}</div>
-                        <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">
-                            <span style="color:var(--success); font-weight:600;">${p.price} USDT</span> <span style="margin:0 6px; color:var(--border-color);">|</span> 库存: ${p.stock}
-                            ${p.is_pinned ? '<span style="color:var(--warning); margin-left:8px;"><i class="ri-pushpin-fill"></i> 置顶</span>' : ''}
-                        </div>
-                    </div>
+   return `
+    <div class="prod-row" style="gap:12px;">
+        <input type="checkbox" class="prod-checkbox" value="${p.id}" style="width:16px; height:16px; margin:0; box-shadow:none; flex-shrink:0;">
+        <div style="flex:1; display:flex; align-items:center; min-width:0;">
+            ${imgHtml}
+            <div style="min-width:0; padding-right:16px;">
+                <div style="color:var(--text-main); font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(p.name)}</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">
+                    <span style="color:var(--success); font-weight:600;">${p.price} USDT</span>
+                    ${p.is_pinned ? '<span style="color:var(--warning); margin-left:8px;"><i class="ri-pushpin-fill"></i> 置顶</span>' : ''}
+                    ${p.is_hot ? '<span style="color:#ef4444; margin-left:8px;"><i class="ri-fire-fill"></i> 热销</span>' : ''}
                 </div>
-                <div style="display:flex; gap:8px;">
-                    <button class="action-btn" onclick="pinProd(${p.id})" title="${p.is_pinned ? '取消置顶' : '置顶'}"><i class="ri-pushpin-${p.is_pinned ? 'fill' : 'line'}"></i></button>
-                    <button class="action-btn" onclick='editProd(${JSON.stringify(p)})'><i class="ri-edit-line"></i> 编辑</button>
-                    <button class="action-btn" onclick="delProd(${p.id})" style="color:var(--danger);"><i class="ri-delete-bin-line"></i></button>
-                </div>
-            </div>`;
-        }).join('');
+            </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button class="action-btn" onclick="setSingleHotProd(${p.id}, ${!p.is_hot})" title="${p.is_hot ? '取消热销' : '设为热销'}" style="${p.is_hot ? 'color:#ef4444;' : ''}"><i class="ri-fire-${p.is_hot ? 'fill' : 'line'}"></i></button>
+            <button class="action-btn" onclick="pinProd(${p.id})" title="${p.is_pinned ? '取消置顶' : '置顶'}"><i class="ri-pushpin-${p.is_pinned ? 'fill' : 'line'}"></i></button>
+            <button class="action-btn" onclick="editProd(curData.products.find(x => x.id === ${p.id}))"><i class="ri-edit-line"></i> 编辑</button>
+            <button class="action-btn" onclick="delProd(${p.id})" style="color:var(--danger);"><i class="ri-delete-bin-line"></i></button>
+        </div>
+    </div>`;
+}).join('');
 
         container.innerHTML = tabsHtml + `<div style="margin-top: 16px; border:1px solid var(--border-color); border-radius:var(--radius-lg); overflow:hidden;">${listHtml}</div>`;
     }
@@ -1397,7 +1427,7 @@
         if (!curData.products) return;
         const cats = [...new Set(curData.products.map(p => p.category))];
         container.innerHTML = cats.map(cat => `<div class="sortable-item" data-cat="${escapeHtml(cat)}"><i class="ri-draggable drag-handle"></i><span>${escapeHtml(cat)}</span></div>`).join('');
-        new Sortable(container, { animation: 200, ghostClass: 'sortable-ghost', handle: '.sortable-item', delay: 100, delayOnTouchOnly: true, touchStartThreshold: 3, forceFallback: true });
+        new Sortable(container, { animation: 200, ghostClass: 'sortable-ghost', handle: '.drag-handle', delay: 100, delayOnTouchOnly: true, touchStartThreshold: 3, forceFallback: true });
     }
 
     function openCatSortModal() { renderCategorySort(); document.getElementById('cat-sort-modal').style.display = 'flex'; }
@@ -1445,7 +1475,6 @@
 document.getElementById('p-id').value = p.id;
         document.getElementById('p-name').value = p.name;
         document.getElementById('p-price').value = p.price;
-        document.getElementById('p-stock').value = p.stock;
         updateCatSelect(p.category);
         document.getElementById('p-type').value = p.type || 'virtual';
 document.getElementById('p-desc').value = p.description || '';
@@ -1461,7 +1490,7 @@ document.getElementById('btn-save-prod').innerHTML = '保存更改';
     function resetProdForm() {
         document.getElementById('prod-title').innerHTML = '上架新商品';
 document.getElementById('p-id').value = ""; document.getElementById('p-name').value = ""; document.getElementById('p-price').value = "";
-        document.getElementById('p-stock').value = ""; updateCatSelect(''); document.getElementById('p-type').value = "virtual";
+        updateCatSelect(''); document.getElementById('p-type').value = "virtual";
         document.getElementById('p-desc').value = "";
 tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
         document.getElementById('btn-save-prod').innerHTML = '保存商品';
@@ -1501,53 +1530,52 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
         } catch (e) { showNotification('错误', '请求失败', 'danger'); }
     }
 
-    // [新增] 一键补库存逻辑
-    async function restockAll() {
-        const { value: stockAmount } = await Swal.fire({
-            title: '一键满库存',
-            input: 'number',
-            inputLabel: '将【所有商品】的库存统一修改为：',
-            inputValue: 999, // 默认推荐填 999
-            showCancelButton: true,
-            confirmButtonText: '确定补货',
-            cancelButtonText: '取消',
-            confirmButtonColor: 'var(--primary)',
-            inputValidator: (value) => {
-                if (!value || value < 0) {
-                    return '请输入有效的库存数量！'
-                }
-            }
-        });
-
-        if (stockAmount) {
-            try {
-                const res = await fetch(`${API_BASE}/api/admin/product/restock_all`, {
-                    method: 'POST',
-                    headers: getAuthHeaders(),
-                    body: JSON.stringify({ amount: stockAmount })
-                });
-                const d = await res.json();
-                if(d.success) {
-                    showNotification('成功', `所有商品库存已重置为 ${stockAmount}`, 'success');
-                    refresh();
-                } else {
-                    showNotification('错误', d.msg || '操作失败', 'danger');
-                }
-            } catch(e) {
-                showNotification('错误', '网络异常', 'danger');
-            }
-        }
+    function toggleAllProds(el) {
+        document.querySelectorAll('.prod-checkbox').forEach(cb => cb.checked = el.checked);
+    }
+    async function setSingleHotProd(id, isHot) {
+        await executeHotProd([id], isHot);
+    }
+    async function batchHotProd(isHot) {
+        const ids = Array.from(document.querySelectorAll('.prod-checkbox:checked')).map(cb => cb.value);
+        if (ids.length === 0) return showNotification('提示', '请先勾选商品', 'warning');
+        await executeHotProd(ids, isHot);
+    }
+    async function executeHotProd(ids, isHot) {
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/product/hot`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ ids, isHot }) });
+            const d = await res.json();
+            if(d.success) { showNotification('成功', '热销状态已刷新', 'success'); await refresh(); document.getElementById('check-all-prods').checked = false; } 
+            else showNotification('失败', '操作异常', 'warning');
+        } catch (e) { showNotification('错误', '请求失败', 'danger'); }
     }
 
     let originalRenderChats = function() {
         const uList = document.getElementById('chat-users');
         const chats = curData.chats || {};
-        const sessionIds = Object.keys(chats).sort((a, b) => {
+        let sessionIds = Object.keys(chats).sort((a, b) => {
             const timeA = chats[a].length ? new Date(chats[a][chats[a].length-1].created_at) : 0;
             const timeB = chats[b].length ? new Date(chats[b][chats[b].length-1].created_at) : 0;
             return timeB - timeA;
         });
         
+        const filterVal = document.getElementById('chat-source-filter') ? document.getElementById('chat-source-filter').value : 'all';
+        if (filterVal !== 'all') {
+            sessionIds = sessionIds.filter(sid => {
+                const messages = chats[sid] || [];
+                let rawUid = sid.replace('hr_', '').replace('user_', '').replace('guest_', '访客_');
+                let source = '';
+                const userObj = curData.users?.find(u => u.id.toString() === rawUid);
+                if (userObj && userObj.source) source = userObj.source;
+                else {
+                    const firstUserMsg = messages.find(m => m.sender === 'user' && m.source);
+                    source = firstUserMsg ? firstUserMsg.source : '';
+                }
+                const isLg = source.includes('8888');
+                return filterVal === 'longge' ? isLg : !isLg;
+            });
+        }
+
         if (sessionIds.length === 0) { uList.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">暂无会话记录</div>'; return; }
         
         uList.innerHTML = sessionIds.map(sid => {
@@ -1679,6 +1707,33 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
         finally { btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill"></i>'; }
     }
 
+    async function sendAdminChatImage(input) {
+        if(!curChat) return showNotification('提示', '请先选择会话', 'warning');
+        const file = input.files[0];
+        if (!file) return;
+        if (!file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i)) { showNotification('错误', '仅支持图片', 'danger'); input.value = ''; return; }
+        if (file.size > 5 * 1024 * 1024) { showNotification('错误', '图片不能超过5MB', 'danger'); input.value = ''; return; }
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const replyBtn = document.querySelector('.chat-input-container button:last-child');
+        replyBtn.disabled = true; replyBtn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
+        
+        try {
+            const res = await fetch(`${API_BASE}/api/upload`, { method: 'POST', headers: {'Authorization': adminToken}, body: formData });
+            const d = await res.json();
+            if(d.success) {
+                await fetch(`${API_BASE}/api/admin/reply`, { method:'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: curChat, text: d.url, msgType: 'image' }) });
+                refresh();
+            } else showNotification('错误', d.error || '上传失败', 'danger');
+        } catch(e) { showNotification('错误', '网络故障', 'danger'); }
+        finally {
+            input.value = '';
+            replyBtn.disabled = false; replyBtn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>';
+        }
+    }
+
     async function uploadImg(input) {
         if (!input.files || !input.files[0]) return;
         const file = input.files[0]; const fileName = file.name.toLowerCase();
@@ -1745,12 +1800,11 @@ const method = id ? 'PUT' : 'POST';
 
         const name = document.getElementById('p-name').value.trim();
 const price = document.getElementById('p-price').value.trim();
-        const stock = document.getElementById('p-stock').value;
         const catSelect = document.getElementById('p-cat-select').value;
         const category = catSelect === '__NEW__' ?
 document.getElementById('p-cat-new').value.trim() : catSelect;
         
-        if (!name || !price || !stock || !category) return showNotification('警告', '请填写必填项', 'warning');
+        if (!name || !price || !category) return showNotification('警告', '请填写必填项', 'warning');
         
         const validVariants = tempVariants.filter(v => v.name.trim() !== '' && v.price !== '');
 
@@ -1759,7 +1813,7 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
         try {
             const response = await fetch(url, {
                 method: method, headers: getAuthHeaders(), 
-                body: JSON.stringify({ name, price, stock: parseInt(stock), category, desc: document.getElementById('p-desc').value.trim(), type: document.getElementById('p-type').value, imageUrl: JSON.stringify(tempImgs), variants: JSON.stringify(validVariants) })
+                body: JSON.stringify({ name, price, category, desc: document.getElementById('p-desc').value.trim(), type: document.getElementById('p-type').value, imageUrl: JSON.stringify(tempImgs), variants: JSON.stringify(validVariants) })
             });
             const result = await response.json();
             if (response.ok && result.success) { showNotification('成功', '商品保存成功', 'success'); closeProdModal(); refresh(); } 
@@ -1903,6 +1957,13 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
     socket.on('admin_update', () => refresh());
     socket.on('order_update', () => refresh());
     socket.on('global_update', () => refresh());
+    socket.on('admin_chat_read', (data) => {
+        if (curData.chats && curData.chats[data.sessionId]) {
+            curData.chats[data.sessionId].forEach(m => { if (m.sender === 'user') m.is_read = true; });
+            originalRenderChats();
+            updateBadge();
+        }
+    });
     socket.on('new_message', (data) => {
         if (!curData.chats) curData.chats = {};
         if (!curData.chats[data.session_id]) curData.chats[data.session_id] = [];
