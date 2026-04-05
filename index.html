@@ -432,11 +432,11 @@
             .chat-container.active { height: 100dvh !important; width: 100vw !important; position: fixed; top: 0; left: 0; z-index: 10001; border-radius: 0; }
             .chat-container.active .chat-main-panel { border-radius: 0; }
             
-            /* 手機端商品列表卡片排版修復 */
-            .prod-row { flex-direction: column; align-items: flex-start; gap: 12px; }
-            .prod-row > div:first-child { width: 100%; }
-            .prod-row > div:last-child { width: 100%; display: flex; gap: 8px; flex-wrap: wrap; }
-            .action-btn { flex: 1; justify-content: center; }
+            .prod-row { flex-direction: column; align-items: flex-start; gap: 12px; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 12px; box-shadow: var(--shadow-sm); position: relative; }
+        .prod-row > input[type="checkbox"] { position: absolute; right: 12px; top: 12px; }
+        .prod-row > div:nth-child(2) { width: 100%; display: flex; flex-direction: row; align-items: center; padding-right: 24px; }
+        .prod-row > div:last-child { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+        .action-btn { width: 100%; justify-content: center; padding: 8px 0; }
         }
 
         /* === 其他组件优化 === */
@@ -481,12 +481,17 @@
         .sortable-list { display: flex; flex-direction: column; gap: 8px; }
         .sortable-item { background: #ffffff; border: 1px solid var(--border-color); padding: 12px 16px; border-radius: var(--radius-md); display: flex; align-items: center; gap: 12px; cursor: grab; font-size: 14px; box-shadow: var(--shadow-sm); }
         .sortable-ghost { opacity: 0.5; background: var(--primary-light); border: 1px dashed var(--primary); }
-        .drag-handle { color: var(--text-muted); cursor: grab; }
+        .drag-handle { color: var(--text-muted); cursor: grab; touch-action: none; }
 
         .hire-item { border: 1px solid var(--border-color); padding: 20px; margin-bottom: 16px; border-radius: var(--radius-lg); position: relative; background: #ffffff; box-shadow: var(--shadow-sm); }
         .hire-del { position: absolute; top: 16px; right: 16px; color: var(--text-muted); cursor: pointer; background: var(--bg-body); border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: var(--transition); }
         .hire-del:hover { background: #fee2e2; color: var(--danger); }
     </style>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="NEXUS总控">
+    <link rel="apple-touch-icon" href="icon.jpg">
 </head>
 <body>
 
@@ -525,6 +530,9 @@
     <div class="menu-item" onclick="nav('chat')" style="margin-top: auto;">
         <i class="ri-message-3-line"></i> 客服聊天
         <span id="chat-badge-total" class="nav-badge">0</span>
+    </div>
+    <div class="menu-item" onclick="installAdminApp()" style="margin-bottom: 24px; color: var(--primary);">
+        <i class="ri-download-cloud-2-line"></i> 下载独立APP
     </div>
 </div>
 
@@ -754,11 +762,11 @@
             <div style="padding: 20px 24px; border-bottom: 1px solid var(--border-color); display:flex; flex-wrap:wrap; gap:16px; justify-content:space-between; align-items:center;">
                 <h2 style="margin:0;"><i class="ri-group-line"></i> 用户列表 (<span id="user-count">0</span>)</h2>
                 <div style="display:flex; gap:8px; align-items:center;">
-                    <select id="user-source-filter" onchange="renderUsers()" style="width:100px; padding:6px 10px; font-size:13px; height:auto; min-height:0;">
-                        <option value="all">全部</option>
-                        <option value="boss">Boss</option>
-                        <option value="longge">龙哥</option>
-                    </select>
+                    <div class="cat-tabs" id="user-source-filter-container" style="margin-bottom:0; padding-bottom:0;">
+                        <div class="cat-tab active" data-val="all" onclick="document.querySelectorAll('#user-source-filter-container .cat-tab').forEach(e=>e.classList.remove('active')); this.classList.add('active'); renderUsers();">全部</div>
+                        <div class="cat-tab" data-val="boss" onclick="document.querySelectorAll('#user-source-filter-container .cat-tab').forEach(e=>e.classList.remove('active')); this.classList.add('active'); renderUsers();">Boss</div>
+                        <div class="cat-tab" data-val="longge" onclick="document.querySelectorAll('#user-source-filter-container .cat-tab').forEach(e=>e.classList.remove('active')); this.classList.add('active'); renderUsers();">龙哥</div>
+                    </div>
                     <input type="text" id="user-search" placeholder="搜索 UID 或 联系方式..." style="width: 200px;" onkeyup="searchUsers()">
                 </div>
             </div>
@@ -816,11 +824,11 @@
             <div class="chat-users-panel">
                 <div style="padding:16px; border-bottom:1px solid var(--border-color); font-weight:600; color:var(--text-main); font-size:14px; position:sticky; top:0; background:white; z-index:10; display:flex; justify-content:space-between; align-items:center;">
                     <span>近期会话</span>
-                    <select id="chat-source-filter" onchange="originalRenderChats()" style="width:100px; padding:4px 8px; font-size:12px; height:auto; min-height:0; box-shadow:none;">
-                        <option value="all">全部</option>
-                        <option value="boss">Boss</option>
-                        <option value="longge">龙哥</option>
-                    </select>
+                    <div class="cat-tabs" id="chat-source-filter-container" style="margin-bottom:0; padding-bottom:0;">
+                        <div class="cat-tab active" data-val="all" onclick="document.querySelectorAll('#chat-source-filter-container .cat-tab').forEach(e=>e.classList.remove('active')); this.classList.add('active'); originalRenderChats();">全部</div>
+                        <div class="cat-tab" data-val="boss" onclick="document.querySelectorAll('#chat-source-filter-container .cat-tab').forEach(e=>e.classList.remove('active')); this.classList.add('active'); originalRenderChats();">Boss</div>
+                        <div class="cat-tab" data-val="longge" onclick="document.querySelectorAll('#chat-source-filter-container .cat-tab').forEach(e=>e.classList.remove('active')); this.classList.add('active'); originalRenderChats();">龙哥</div>
+                    </div>
                 </div>
                 <div id="chat-users"></div>
             </div>
@@ -853,6 +861,31 @@
 </div>
 
 <script>
+    let deferredAdminPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredAdminPrompt = e;
+    });
+
+    function installAdminApp() {
+        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+            Swal.fire({ icon: 'info', title: '已经是APP模式', toast: true, position: 'top', showConfirmButton: false, timer: 2000 });
+            return;
+        }
+        if (deferredAdminPrompt) {
+            deferredAdminPrompt.prompt();
+            deferredAdminPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') deferredAdminPrompt = null;
+            });
+        } else {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            if(isIOS) {
+                Swal.fire({title: '安装步骤', html: '苹果用户请点击浏览器底部的<br><b>分享图标</b> <i class="ri-upload-2-line"></i><br>然后下滑选择 <b>添加到主屏幕</b>', icon: 'info'});
+            } else {
+                Swal.fire({title: '安装步骤', html: '安卓用户请点击浏览器右上角的<br><b>菜单(三个点)</b><br>然后选择 <b>安装应用</b>', icon: 'info'});
+            }
+        }
+    }
    const API_BASE = "https://shy-svqc.onrender.com";
     const socket = io(API_BASE, {
         transports: ['websocket'],
@@ -1232,7 +1265,8 @@
     function renderUsers() {
         const users = curData.users || [];
         
-        const filterVal = document.getElementById('user-source-filter') ? document.getElementById('user-source-filter').value : 'all';
+        const filterEl = document.querySelector('#user-source-filter-container .cat-tab.active');
+        const filterVal = filterEl ? filterEl.getAttribute('data-val') : 'all';
         let baseUsers = users;
         if (filterVal !== 'all') {
             baseUsers = users.filter(user => {
@@ -1259,33 +1293,35 @@
                 : '<span class="tag" style="background:#e0e7ff; color:#4f46e5; padding:0 6px;">Boss</span>';
 
             return `
-            <div class="user-item">
-                <div style="flex:1;">
-                    <div style="font-weight:600; font-size:15px; display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        ${sourceBadge} ${escapeHtml(user.contact || '未知用户')}
-                        ${hasOrder ? `<span class="tag paid" style="font-size:10px; padding:0 6px;">有订单</span>` : `<span class="tag cancelled" style="font-size:10px; padding:0 6px;">无订单</span>`}
+            <div class="user-item" style="flex-direction:column; gap:12px;">
+                <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                    <div style="font-weight:600; font-size:15px; display:flex; align-items:center; gap:8px;">
+                        ${sourceBadge} <span style="word-break:break-all;">${escapeHtml(user.contact || '未知用户')}</span>
                     </div>
-                    
-                    <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:12px; color:var(--text-secondary); margin-bottom:12px;">
-                        <div style="background:var(--bg-body); padding:2px 8px; border-radius:4px;"><i class="ri-id-card-line"></i> ${user.id}</div>
-                        ${user.invite_code ? `<div style="background:#eff6ff; color:#2563eb; padding:2px 8px; border-radius:4px;">码: ${user.invite_code}</div>` : ''}
-                        ${user.invited_by ? `<div style="background:#fff7ed; color:#ea580c; padding:2px 8px; border-radius:4px;">上线: ${user.invited_by}</div>` : ''}
-                    </div>
+                    ${hasOrder ? '<span class="tag paid" style="font-size:10px; padding:0 6px; white-space:nowrap;">有订单</span>' : '<span class="tag cancelled" style="font-size:10px; padding:0 6px; white-space:nowrap;">无订单</span>'}
+                </div>
+                
+                <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:12px; color:var(--text-secondary); width:100%;">
+                    <div style="background:var(--bg-body); padding:4px 8px; border-radius:4px; display:flex; align-items:center; gap:4px;"><i class="ri-id-card-line"></i> ${user.id}</div>
+                    ${user.invite_code ? '<div style="background:#eff6ff; color:#2563eb; padding:4px 8px; border-radius:4px; display:flex; align-items:center; gap:4px;"><i class="ri-qr-code-line"></i> ' + user.invite_code + '</div>' : ''}
+                    ${user.invited_by ? '<div style="background:#fff7ed; color:#ea580c; padding:4px 8px; border-radius:4px; display:flex; align-items:center; gap:4px;"><i class="ri-group-line"></i> ' + user.invited_by + '</div>' : ''}
+                </div>
 
-                    <div style="font-family:monospace; font-size:14px; margin-bottom:8px;">
-                        <span style="color:var(--text-muted); font-family:inherit;">余额:</span> 
-                        <span style="color:var(--success); font-weight:700; font-size:18px;">${parseFloat(user.balance || 0).toFixed(2)}</span> 
-                        <span style="font-size:12px; color:var(--text-secondary);">USDT</span>
-                    </div>
-                    <div style="font-size:11px; color:var(--text-muted);">
-                        注册于 ${new Date(user.created_at).toLocaleString()}
+                <div style="display:flex; justify-content:space-between; width:100%; align-items:flex-end;">
+                    <div>
+                        <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">注册时间: ${new Date(user.created_at).toLocaleString()}</div>
+                        <div style="font-family:monospace; font-size:14px;">
+                            <span style="color:var(--text-muted); font-family:inherit;">余额:</span> 
+                            <span style="color:var(--success); font-weight:700; font-size:18px;">${parseFloat(user.balance || 0).toFixed(2)}</span> 
+                            <span style="font-size:12px; color:var(--text-secondary);">USDT</span>
+                        </div>
                     </div>
                 </div>
                 
-                <div style="display:flex; flex-direction:column; gap:8px;">
-                     <button class="btn-secondary" onclick="editBalance('${user.id}')" style="padding:6px 12px; font-size:12px; color:var(--primary); border-color:var(--border-focus);"><i class="ri-wallet-3-line"></i> 余额</button>
-                    <button class="btn-secondary" onclick="initiateChat('${user.id}')" style="padding:6px 12px; font-size:12px;"><i class="ri-message-3-line"></i> 聊天</button>
-                    <button class="btn-secondary" onclick="delUser('${user.id}')" style="padding:6px 12px; font-size:12px; color:var(--danger); border-color:#fecaca;"><i class="ri-delete-bin-line"></i> 删除</button>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; width:100%; margin-top:4px;">
+                     <button class="btn-secondary" onclick="editBalance('${user.id}')" style="padding:8px 0; font-size:13px; color:var(--primary); border-color:var(--border-focus); width:100%; justify-content:center;"><i class="ri-wallet-3-line"></i> 余额</button>
+                    <button class="btn-secondary" onclick="initiateChat('${user.id}')" style="padding:8px 0; font-size:13px; width:100%; justify-content:center;"><i class="ri-message-3-line"></i> 聊天</button>
+                    <button class="btn-secondary" onclick="delUser('${user.id}')" style="padding:8px 0; font-size:13px; color:var(--danger); border-color:#fecaca; width:100%; justify-content:center;"><i class="ri-delete-bin-line"></i> 删除</button>
                 </div>
             </div>`;
         }).join('');
@@ -1427,7 +1463,7 @@
         if (!curData.products) return;
         const cats = [...new Set(curData.products.map(p => p.category))];
         container.innerHTML = cats.map(cat => `<div class="sortable-item" data-cat="${escapeHtml(cat)}"><i class="ri-draggable drag-handle"></i><span>${escapeHtml(cat)}</span></div>`).join('');
-        new Sortable(container, { animation: 200, ghostClass: 'sortable-ghost', handle: '.drag-handle', delay: 100, delayOnTouchOnly: true, touchStartThreshold: 3, forceFallback: true });
+        new Sortable(container, { animation: 200, ghostClass: 'sortable-ghost', handle: '.drag-handle' });
     }
 
     function openCatSortModal() { renderCategorySort(); document.getElementById('cat-sort-modal').style.display = 'flex'; }
@@ -1559,7 +1595,8 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
             return timeB - timeA;
         });
         
-        const filterVal = document.getElementById('chat-source-filter') ? document.getElementById('chat-source-filter').value : 'all';
+        const filterEl = document.querySelector('#chat-source-filter-container .cat-tab.active');
+        const filterVal = filterEl ? filterEl.getAttribute('data-val') : 'all';
         if (filterVal !== 'all') {
             sessionIds = sessionIds.filter(sid => {
                 const messages = chats[sid] || [];
