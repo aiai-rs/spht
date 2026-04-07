@@ -346,7 +346,7 @@
             flex-shrink: 0; 
         }
         .chat-back-btn { display: none; font-size: 20px; color: var(--text-secondary); cursor: pointer; }
-        .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+        .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; scroll-behavior: smooth; }
         
         .chat-input-container { padding: 16px; background: #ffffff; border-top: 1px solid var(--border-color); display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
         .chat-input-container input { margin: 0; border-radius: 100px; padding: 10px 16px; background: var(--bg-body); border-color: transparent; }
@@ -365,11 +365,11 @@
         .chat-time { font-size: 11px; color: var(--text-muted); }
         .chat-preview { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
         
-        .msg-row { display: flex; width: 100%; margin-bottom: 16px; }
+        .msg-row { display: flex; width: 100%; margin-bottom: 8px; }
         .msg-row.user { justify-content: flex-start; }
         .msg-row.admin { justify-content: flex-end; }
 
-        .msg-bubble { width: fit-content; max-width: 85%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; letter-spacing: 1px; word-wrap: break-word; word-break: break-all; }
+        .msg-bubble { width: fit-content; max-width: 85%; padding: 8px 12px; border-radius: 16px; font-size: 14px; line-height: 1.4; word-wrap: break-word; word-break: break-all; }
         .msg-row.user .msg-bubble { background: #ffffff; color: var(--text-main); border: 1px solid var(--border-color); border-bottom-left-radius: 4px; }
         .msg-row.admin .msg-bubble { background: var(--primary); color: #ffffff; border-bottom-right-radius: 4px; }
         .msg-time { font-size: 10px; margin-top: 4px; opacity: 0.7; }
@@ -456,7 +456,7 @@
         .user-list { max-height: 60vh; overflow-y: auto; padding-right: 4px; }
         .user-item { background: #ffffff; padding: 16px; border-radius: var(--radius-lg); margin-bottom: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow-sm); display: flex; justify-content: space-between; align-items: flex-start; transition: var(--transition); }
         
-        .admin-notification { position: fixed; top: 24px; right: 24px; background: #ffffff; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 16px; display: flex; align-items: flex-start; gap: 12px; z-index: 10000; min-width: 300px; border: 1px solid var(--border-color); animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); pointer-events: auto; }
+        .admin-notification { position: relative; background: #ffffff; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 16px; display: flex; align-items: flex-start; gap: 12px; z-index: 10000; min-width: 300px; border: 1px solid var(--border-color); animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); pointer-events: auto; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .admin-notification-icon { font-size: 20px; line-height: 1; margin-top: 2px; }
         .admin-notification.success .admin-notification-icon { color: var(--success); }
@@ -497,7 +497,7 @@
 </head>
 <body>
 
-<div id="notification-container" style="position:fixed; top:0; left:0; width:100%; height:0; z-index:100002; pointer-events:none;"></div>
+<div id="notification-container" style="position:fixed; top:24px; right:24px; display:flex; flex-direction:column; gap:12px; z-index:100002; pointer-events:none;"></div>
 
 <!-- 登录模态框 -->
 <div id="login-modal" class="modal-overlay">
@@ -2208,6 +2208,23 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
             originalOpenChat(sid);
             originalRenderChats();
             showNotification('错误', '网络异常，状态未保存', 'danger');
+        }
+    }
+    async function recallMsg(msgId, sessionId) {
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/chat/recall`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ messageId: msgId, sessionId: sessionId })
+            });
+            const d = await res.json();
+            if (d.success) {
+                showNotification('成功', '消息已撤回', 'success');
+            } else {
+                showNotification('失败', d.msg || '撤回失败', 'warning');
+            }
+        } catch (e) {
+            showNotification('错误', '网络异常', 'danger');
         }
     }
 
