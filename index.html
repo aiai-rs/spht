@@ -395,7 +395,8 @@
             100% { opacity: 1; transform: scale(1) translateY(0); }
         }
 
-        /* === 移动端底部导航高级特效 === */
+        .swal2-container { z-index: 100002 !important; }
+
         @media (max-width: 768px) {
             body { flex-direction: column; overflow: auto; height: auto; padding-bottom: 90px; }
             .main { padding: 16px; }
@@ -496,7 +497,7 @@
 </head>
 <body>
 
-<div id="notification-container" style="position:fixed; top:0; left:0; width:100%; height:0; z-index:10000; pointer-events:none;"></div>
+<div id="notification-container" style="position:fixed; top:0; left:0; width:100%; height:0; z-index:100002; pointer-events:none;"></div>
 
 <!-- 登录模态框 -->
 <div id="login-modal" class="modal-overlay">
@@ -1666,9 +1667,14 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
                 ? `<span class="tag" style="background:#ecfdf5; color:#059669; padding:0 4px; font-size:10px; margin-right:4px;">直聘</span>`
                 : `<span class="tag" style="background:#f3f4f6; color:#4b5563; padding:0 4px; font-size:10px; margin-right:4px;">客服</span>`;
 
+           const isMuted = curData.mutedSessions && curData.mutedSessions.includes(sid);
+
             return `
             <div class="chat-item ${curChat === sid ? 'active' : ''}" onclick="openChat('${sid}')">
-                <div class="chat-avatar">${rawUid.slice(-2)}</div>
+                <div class="chat-avatar" style="position:relative;">
+                    ${rawUid.slice(-2)}
+                    ${isMuted ? '<div style="position:absolute; bottom:-2px; right:-2px; background:var(--bg-card); border-radius:50%; width:16px; height:16px; display:flex; align-items:center; justify-content:center; color:var(--danger); box-shadow:var(--shadow-sm);"><i class="ri-notification-off-fill" style="font-size:10px;"></i></div>' : ''}
+                </div>
                 <div class="chat-info">
                     <div class="chat-top">
                         <span class="chat-name">${bossTag}${chatTypeTag}UID: ${rawUid}</span>
@@ -2106,6 +2112,31 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
     }
 
     async function toggleMuteChat(sid, btn) {
+        if (!curData.mutedSessions) curData.mutedSessions = [];
+        const isMutedNow = curData.mutedSessions.includes(sid);
+        
+        if (!isMutedNow) {
+            curData.mutedSessions.push(sid);
+            btn.style.color = 'var(--danger)';
+            btn.innerHTML = '<i class="ri-notification-off-line" style="font-size:18px;"></i>';
+            btn.title = '恢复通知';
+            showNotification('已静音', '此会话通知已暂停', 'info');
+        } else {
+            curData.mutedSessions = curData.mutedSessions.filter(id => id !== sid);
+            btn.style.color = 'var(--text-secondary)';
+            btn.innerHTML = '<i class="ri-notification-3-line" style="font-size:18px;"></i>';
+            btn.title = '静音此会话';
+            showNotification('已恢复', '此会话通知已开启', 'success');
+        }
+
+        btn.style.transform = 'scale(0.8)';
+        setTimeout(() => {
+            btn.style.transform = 'scale(1)';
+            btn.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
+        }, 50);
+
+        originalRenderChats();
+
         try {
             const res = await fetch(`${API_BASE}/api/admin/chat/toggle_mute`, {
                 method: 'POST',
@@ -2113,24 +2144,16 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
                 body: JSON.stringify({ sessionId: sid })
             });
             const d = await res.json();
-            if (d.success) {
-                if (!curData.mutedSessions) curData.mutedSessions = [];
-                if (d.isMuted) {
-                    curData.mutedSessions.push(sid);
-                    btn.style.color = 'var(--danger)';
-                    btn.innerHTML = '<i class="ri-notification-off-line" style="font-size:18px;"></i>';
-                    btn.title = '恢复通知';
-                    showNotification('已静音', '此会话的TG群通知已暂停', 'info');
-                } else {
-                    curData.mutedSessions = curData.mutedSessions.filter(id => id !== sid);
-                    btn.style.color = 'var(--text-secondary)';
-                    btn.innerHTML = '<i class="ri-notification-3-line" style="font-size:18px;"></i>';
-                    btn.title = '静音此会话';
-                    showNotification('已恢复', '此会话的TG群通知已开启', 'success');
-                }
-            }
+            if (!d.success) throw new Error('Sync failed');
         } catch (e) {
-            showNotification('错误', '操作失败', 'danger');
+            if (isMutedNow) {
+                if (!curData.mutedSessions.includes(sid)) curData.mutedSessions.push(sid);
+            } else {
+                curData.mutedSessions = curData.mutedSessions.filter(id => id !== sid);
+            }
+            originalOpenChat(sid);
+            originalRenderChats();
+            showNotification('错误', '网络异常，状态未保存', 'danger');
         }
     }
 
