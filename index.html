@@ -1703,15 +1703,23 @@ tempImgs = []; tempVariants = []; renderImgPreviews(); renderVariants();
             source = firstUserMsg ? firstUserMsg.source : '';
         }
 
-        const bossName = source.includes('8888') ? '龍哥' : 'Boss';
+        const bossName = source.includes('8888') ? 
+       '龍哥' : 'Boss';
         const typeStr = isHR ? '直聘沟通' : '在线客服';
-
-        document.getElementById('chat-title-uid').innerHTML = `
+        const isMuted = curData.mutedSessions && curData.mutedSessions.includes(sid);
+        const muteIcon = isMuted ? 'ri-notification-off-line' : 'ri-notification-3-line';
+        const muteColor = isMuted ? 'var(--danger)' : 'var(--text-secondary)';
+document.getElementById('chat-title-uid').innerHTML = `
             <div style="display:flex; align-items:center; gap:8px; width:100%;">
                 <span style="color:var(--primary);">[${bossName}]</span>
                 <span style="color:var(--success);">[${typeStr}]</span> 
                 <span>UID: ${rawUid}</span>
-                <button onclick="clearChatHistory('${sid}')" style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center;" title="清空聊天记录">
+                <button onclick="toggleMuteChat('${sid}', this)" style="background:none; border:none; color:${muteColor}; cursor:pointer; padding:4px; display:flex; align-items:center;"
+                    title="${isMuted ? '恢复通知' : '静音此会话'}">
+                    <i class="${muteIcon}" style="font-size:18px;"></i>
+                </button>
+                <button onclick="clearChatHistory('${sid}')" style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center;"
+                    title="清空聊天记录">
                     <i class="ri-delete-bin-7-line" style="font-size:18px;"></i>
                 </button>
             </div>
@@ -2094,6 +2102,35 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
             } catch (e) {
                 showNotification('错误', '清空失败', 'danger');
             }
+        }
+    }
+
+    async function toggleMuteChat(sid, btn) {
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/chat/toggle_mute`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ sessionId: sid })
+            });
+            const d = await res.json();
+            if (d.success) {
+                if (!curData.mutedSessions) curData.mutedSessions = [];
+                if (d.isMuted) {
+                    curData.mutedSessions.push(sid);
+                    btn.style.color = 'var(--danger)';
+                    btn.innerHTML = '<i class="ri-notification-off-line" style="font-size:18px;"></i>';
+                    btn.title = '恢复通知';
+                    showNotification('已静音', '此会话的TG群通知已暂停', 'info');
+                } else {
+                    curData.mutedSessions = curData.mutedSessions.filter(id => id !== sid);
+                    btn.style.color = 'var(--text-secondary)';
+                    btn.innerHTML = '<i class="ri-notification-3-line" style="font-size:18px;"></i>';
+                    btn.title = '静音此会话';
+                    showNotification('已恢复', '此会话的TG群通知已开启', 'success');
+                }
+            }
+        } catch (e) {
+            showNotification('错误', '操作失败', 'danger');
         }
     }
 
