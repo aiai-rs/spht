@@ -1798,12 +1798,12 @@ document.getElementById('chat-title-uid').innerHTML = `
         
         btn.disabled = true; btn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
         try {
-            await fetch(`${API_BASE}/api/admin/reply`, { method:'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: curChat, text: t }) });
-            document.getElementById('reply-in').value = '';
-            refresh();
-        } catch (e) { showNotification('错误', '发送失败', 'danger'); } 
-        finally { btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill"></i>'; }
-    }
+                    await fetch(`${API_BASE}/api/admin/reply`, { method:'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: curChat, text: t }) });
+                    document.getElementById('reply-in').value = '';
+                    refresh();
+                } catch (e) { showNotification('错误', '发送失败', 'danger'); } 
+                finally { btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>'; }
+            }
 
     async function sendAdminChatImage(input) {
         if(!curChat) return showNotification('提示', '请先选择会话', 'warning');
@@ -2086,6 +2086,7 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
     socket.on('new_message', (data) => {
         if (!curData.chats) curData.chats = {};
         if (!curData.chats[data.session_id]) curData.chats[data.session_id] = [];
+        if (curData.chats[data.session_id].some(m => m.id === data.id)) return;
         curData.chats[data.session_id].push(data);
 
         const isChatPageActive = document.getElementById('chat').classList.contains('active');
@@ -2235,6 +2236,13 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
             document.getElementById('login-modal').style.display = 'flex'; showNotification('安全', '账户已登出', 'info');
         }
     });
+    function closeChatMobile() {
+        document.getElementById('chat-wrapper').classList.remove('active');
+        if (window.innerWidth <= 768) {
+            document.body.style.overflow = 'auto';
+            document.body.style.height = 'auto';
+        }
+    }
 
     window.addEventListener('popstate', (event) => {
         const wrapper = document.getElementById('chat-wrapper');
