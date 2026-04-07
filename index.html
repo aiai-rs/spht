@@ -369,7 +369,7 @@
         .msg-row.user { justify-content: flex-start; }
         .msg-row.admin { justify-content: flex-end; }
 
-        .msg-bubble { width: fit-content; max-width: 85%; padding: 8px 12px; border-radius: 16px; font-size: 14px; line-height: 1.4; word-wrap: break-word; word-break: break-all; }
+        .msg-bubble { width: fit-content; max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .msg-row.user .msg-bubble { background: #ffffff; color: var(--text-main); border: 1px solid var(--border-color); border-bottom-left-radius: 4px; }
         .msg-row.admin .msg-bubble { background: var(--primary); color: #ffffff; border-bottom-right-radius: 4px; }
         .msg-time { font-size: 10px; margin-top: 4px; opacity: 0.7; }
@@ -1019,6 +1019,10 @@
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
         document.getElementById(id).classList.add('active');
+        if (id === 'chat') {
+            curChat = null;
+            closeChatMobile();
+        }
         
         if(window.innerWidth <= 768) {
             document.body.style.overflow = 'auto';
@@ -1760,8 +1764,9 @@ document.getElementById('chat-title-uid').innerHTML = `
                 return `<div style="text-align:center; font-size:11px; color:var(--text-muted); margin: 8px 0;">${contentHtml}</div>`;
             }
             if (m.msg_type === 'image' || (typeof m.content === 'string' && m.content.match(/\.(jpeg|jpg|gif|png|webp)$/i)) || (typeof m.content === 'string' && m.content.includes('cloudinary.com'))) {
-                contentHtml = `<img src="${m.content}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="window.open(this.src)">`;
-            }
+                let safeUrl = escapeHtml(m.content);
+                contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="window.open(this.src)">`;
+            }
             const recallBtn = isMe ? `<span onclick="recallMsg(${m.id}, '${sid}')" style="cursor:pointer; color:var(--danger); margin-right:8px;"><i class="ri-arrow-go-back-line"></i> 撤回</span>` : '';
             return `
                 <div class="msg-row ${isMe ? 'admin' : 'user'}">
@@ -2237,6 +2242,7 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
         }
     });
     function closeChatMobile() {
+        curChat = null;
         document.getElementById('chat-wrapper').classList.remove('active');
         if (window.innerWidth <= 768) {
             document.body.style.overflow = 'auto';
