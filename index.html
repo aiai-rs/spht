@@ -594,9 +594,10 @@
                 <textarea id="ann-text" placeholder="输入公告内容..."></textarea>
             </div>
             <div class="form-group">
-                <label>客服快捷回复库 (每行一条回复)</label>
-                <textarea id="quick-replies-text" placeholder="输入快捷回复，每行一条..."></textarea>
-            </div>
+                <label>客服快捷回复库 (每行一条回复)</label>
+                <textarea id="quick-replies-text" placeholder="输入快捷回复，每行一条..."></textarea>
+                <button onclick="updQuickReplies(this)" style="margin-top: 8px; padding: 6px 12px; font-size: 12px;"><i class="ri-save-3-line"></i> 保存快捷回复</button>
+            </div>
             
             <div class="form-group">
                 <label>弹窗频率设置 (用户访问时多久弹一次)</label>
@@ -865,18 +866,18 @@
                 </div>
                 
                 <div class="chat-input-container">
-                    <input type="file" id="admin-chat-img" accept="image/*" style="display:none;" onchange="sendAdminChatImage(this)">
-                    <button class="btn-soft" style="width:40px; height:40px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-secondary);" title="快捷回复" onclick="showQuickReplies()">
-                        <i class="ri-chat-quote-line" style="font-size:20px;"></i>
-                    </button>
-                    <button class="btn-soft" style="width:40px; height:40px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-secondary);" onclick="document.getElementById('admin-chat-img').click()">
-                        <i class="ri-image-add-line" style="font-size:20px;"></i>
-                    </button>
-                    <input id="reply-in" type="text" style="flex:1;" placeholder="输入回复内容..." onkeypress="if(event.key === 'Enter') reply(this)">
-                    <button onclick="reply(this)">
-                        <i class="ri-send-plane-fill" style="font-size:18px;"></i>
-                    </button>
-                </div>
+                    <input type="file" id="admin-chat-img" accept="image/*" style="display:none;" onchange="sendAdminChatImage(this)">
+                    <button class="btn-soft" style="width:40px; height:40px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-secondary);" onclick="document.getElementById('admin-chat-img').click()">
+                        <i class="ri-image-add-line" style="font-size:20px;"></i>
+                    </button>
+                    <input id="reply-in" type="text" style="flex:1;" placeholder="输入回复内容..." onkeypress="if(event.key === 'Enter') reply(this)">
+                    <button class="btn-soft" style="width:40px; height:40px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); margin-right:4px;" title="快捷回复" onclick="showQuickReplies()">
+                        <i class="ri-chat-quote-line" style="font-size:20px;"></i>
+                    </button>
+                    <button onclick="reply(this)">
+                        <i class="ri-send-plane-fill" style="font-size:18px;"></i>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1979,18 +1980,26 @@ btn.innerHTML = '<div class="loader"></div> 保存中...';
     }
 
     async function updAnn(btn) {
-        const announcement = document.getElementById('ann-text').value.trim();
-        const quickReplies = document.getElementById('quick-replies-text').value.trim();
-        const showPopup = document.getElementById('ann-pop').value;
-        btn.disabled = true; btn.innerHTML = '<div class="loader"></div> 提交中...';
-        try {
-            await fetch(`${API_BASE}/api/admin/update/announcement`, { method:'POST', headers: getAuthHeaders(), body: JSON.stringify({ text: announcement }) });
-            await fetch(`${API_BASE}/api/admin/update/quick_replies`, { method:'POST', headers: getAuthHeaders(), body: JSON.stringify({ text: quickReplies }) });
-            await fetch(`${API_BASE}/api/admin/update/popup`, { method:'POST', headers: getAuthHeaders(), body: JSON.stringify({ open: showPopup }) });
-            showNotification('成功', '全局设置已生效', 'success');
-        } catch(e) { showNotification('错误', '更新失败', 'danger'); } 
-        finally { btn.disabled = false; btn.innerHTML = '<i class="ri-save-3-line"></i> 保存全局设置'; }
-    }
+        const announcement = document.getElementById('ann-text').value.trim();
+        const showPopup = document.getElementById('ann-pop').value;
+        btn.disabled = true; btn.innerHTML = '<div class="loader"></div> 提交中...';
+        try {
+            await fetch(`${API_BASE}/api/admin/update/announcement`, { method:'POST', headers: getAuthHeaders(), body: JSON.stringify({ text: announcement }) });
+            await fetch(`${API_BASE}/api/admin/update/popup`, { method:'POST', headers: getAuthHeaders(), body: JSON.stringify({ open: showPopup }) });
+            showNotification('成功', '全局设置已生效', 'success');
+        } catch(e) { showNotification('错误', '更新失败', 'danger'); } 
+        finally { btn.disabled = false; btn.innerHTML = '<i class="ri-save-3-line"></i> 保存全局设置'; }
+    }
+    async function updQuickReplies(btn) {
+        const quickReplies = document.getElementById('quick-replies-text').value.trim();
+        const originalText = btn.innerHTML;
+        btn.disabled = true; btn.innerHTML = '<div class="loader" style="width:12px;height:12px;border-width:2px;"></div> 保存中...';
+        try {
+            await fetch(`${API_BASE}/api/admin/update/quick_replies`, { method:'POST', headers: getAuthHeaders(), body: JSON.stringify({ text: quickReplies }) });
+            showNotification('成功', '快捷回复库已独立更新', 'success');
+        } catch(e) { showNotification('错误', '更新失败', 'danger'); } 
+        finally { btn.disabled = false; btn.innerHTML = originalText; }
+    }
 
     async function loadBalanceLogs() {
         const container = document.getElementById('fund-list');
