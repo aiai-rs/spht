@@ -2516,12 +2516,12 @@ function renderMessages(sid) {
  
         // [Fix-3] 撤回按钮用 data 属性，不内联 sessionId
         const recallBtn = isMe
-            ? `<span class="recall-btn" data-msgid="${m.id}" data-sid="${escapeHtml(sid)}"
+            ? `<span onclick="recallMsg(${m.id}, '${escapeHtml(sid)}')"
                     style="cursor:pointer; color:var(--danger); margin-right:8px;">
                     <i class="ri-arrow-go-back-line"></i> 撤回
                </span>`
             : '';
- 
+
         return `
         <div class="msg-row ${isMe ? 'admin' : 'user'}">
             <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
@@ -2530,12 +2530,7 @@ function renderMessages(sid) {
             </div>
         </div>`;
     }).join('');
- 
-    // 事件委托：撤回按钮点击
-    box.querySelectorAll('.recall-btn').forEach(btn => {
-        btn.addEventListener('click', () => recallMsg(btn.dataset.msgid, btn.dataset.sid));
-    });
- 
+
     setTimeout(() => { box.scrollTop = box.scrollHeight; }, 50);
 }
  
@@ -2553,7 +2548,7 @@ async function reply(btn) {
             body: JSON.stringify({ sessionId: curChat, text: t }),
         });
         input.value = '';
-        refresh();
+        refresh(true);
     } catch (e) { showNotification('错误', '发送失败', 'danger'); }
     finally { btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>'; }
 }
@@ -2752,9 +2747,9 @@ function _getRawUid(sid) {
 function _getSessionSource(sid, messages) {
     const rawUid = _getRawUid(sid);
     const userObj = (curData.users || []).find(u => String(u.id) === rawUid);
-    if (userObj && userObj.source) return userObj.source;
+    if (userObj && userObj.source) return String(userObj.source);
     const firstUserMsg = (messages || []).find(m => m.sender === 'user' && m.source);
-    return firstUserMsg ? firstUserMsg.source : '';
+    return firstUserMsg && firstUserMsg.source ? String(firstUserMsg.source) : '';
 }
  
 /* ================================================================
@@ -2828,26 +2823,23 @@ socket.on('new_message', (data) => {
             <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
                 <div class="msg-bubble" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
                 <div class="msg-time">
-                    ${isMe ? `<span class="recall-btn" data-msgid="${data.id}" data-sid="${escapeHtml(data.session_id)}"
+                    ${isMe ? `<span onclick="recallMsg(${data.id}, '${escapeHtml(data.session_id)}')"
                                     style="cursor:pointer; color:var(--danger); margin-right:8px;">
                                 <i class="ri-arrow-go-back-line"></i> 撤回
                               </span>` : ''}
                     ${time}
                 </div>
             </div>`;
- 
-        // 绑定撤回事件
-        const recallEl = div.querySelector('.recall-btn');
-        if (recallEl) recallEl.addEventListener('click', () => recallMsg(recallEl.dataset.msgid, recallEl.dataset.sid));
- 
+
         box.appendChild(div); box.scrollTop = box.scrollHeight;
- 
+
         // 自动标记已读
         if (!isMe) {
             fetch(`${API_BASE}/api/admin/chat/read`, {
                 method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: data.session_id }),
             }).catch(() => {});
         }
+        renderChats();
     } else {
         // [Fix-7] 检查静音状态后再弹通知
         const isMuted = (curData.mutedSessions || []).includes(data.session_id);
