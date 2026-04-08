@@ -1065,18 +1065,12 @@ function debounce(fn, delay) {
         timer = setTimeout(() => fn.apply(this, args), delay);
     };
 }
- 
-/**
- * 现代化通知（右上角浮动）
- * @param {string} title
- * @param {string} message
- * @param {'info'|'success'|'danger'|'warning'} type
- */
-function showNotification(title, message, type = 'info') {
+
+function showNotification(title, message, type = 'info', onClickCallback = null) {
     const container = document.getElementById('notification-container');
     const notification = document.createElement('div');
     notification.className = `admin-notification ${type}`;
- 
+
     const iconMap = {
         success: 'ri-checkbox-circle-fill',
         danger:  'ri-error-warning-fill',
@@ -1084,7 +1078,7 @@ function showNotification(title, message, type = 'info') {
         info:    'ri-information-line',
     };
     const iconStr = iconMap[type] || iconMap.info;
- 
+
     notification.innerHTML = `
         <div class="admin-notification-icon"><i class="${iconStr}"></i></div>
         <div style="flex:1; min-width:0;">
@@ -1092,11 +1086,20 @@ function showNotification(title, message, type = 'info') {
             <div class="admin-notification-message">${escapeHtml(message)}</div>
         </div>
         <button class="btn-soft" style="padding:2px; border-radius:4px; margin-left:8px;"
-                onclick="this.parentElement.remove()">
+                onclick="this.parentElement.remove(); event.stopPropagation();">
             <i class="ri-close-line" style="font-size:16px;"></i>
         </button>
     `;
- 
+
+    if (onClickCallback) {
+        notification.style.cursor = 'pointer';
+        notification.onclick = (e) => {
+            if (e.target.closest('button')) return;
+            onClickCallback();
+            notification.remove();
+        };
+    }
+
     container.appendChild(notification);
     setTimeout(() => {
         if (notification.parentElement) {
@@ -2850,8 +2853,14 @@ socket.on('new_message', (data) => {
                     
                     const bossName = String(source).includes('8888') ? '龍哥' : 'Boss';
                     const isHR     = data.session_id.startsWith('hr_');
-                    const typeStr  = isHR ? '直聘申请' : '客服咨询';
-                    showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info');
+                    const typeStr  = isHR ? '直聘咨询' : '商城咨询';
+                    showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info', () => {
+                        nav('chat');
+                        setTimeout(() => {
+                            const chatItem = document.querySelector(`.chat-item[data-sid="${escapeHtml(data.session_id)}"]`);
+                            if (chatItem) chatItem.click();
+                        }, 300);
+                    });
                 }
                 renderChats();
             }
