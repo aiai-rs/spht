@@ -2834,26 +2834,29 @@ socket.on('new_message', (data) => {
         box.appendChild(div); box.scrollTop = box.scrollHeight;
 
         // 自动标记已读
-        if (!isMe) {
-            fetch(`${API_BASE}/api/admin/chat/read`, {
-                method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: data.session_id }),
-            }).catch(() => {});
-        }
-        renderChats();
-    } else {
-        // [Fix-7] 检查静音状态后再弹通知
-        const isMuted = (curData.mutedSessions || []).includes(data.session_id);
-        if (data.sender === 'user' && !isMuted) {
-            const source   = _getSessionSource(data.session_id, curData.chats[data.session_id] || []);
-            const bossName = source.includes('8888') ? '龍哥' : 'Boss';
-            const isHR     = data.session_id.startsWith('hr_');
-            const typeStr  = isHR ? '直聘申请' : '客服咨询';
-            showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info');
-        }
-        renderChats();
-    }
-    updateBadge();
-});
+                if (!isMe) {
+                    fetch(`${API_BASE}/api/admin/chat/read`, {
+                        method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: data.session_id }),
+                    }).catch(() => {});
+                }
+                renderChats();
+            } else {
+                const isMuted = (curData.mutedSessions || []).includes(data.session_id);
+                if (data.sender === 'user' && !isMuted) {
+                    let rawUid = data.session_id.replace('hr_', '').replace('user_', '').replace('guest_', '访客_');
+                    let source = data.source || '';
+                    const userObj = (curData.users || []).find(u => String(u.id) === String(rawUid));
+                    if (userObj && userObj.source) source = String(userObj.source);
+                    
+                    const bossName = String(source).includes('8888') ? '龍哥' : 'Boss';
+                    const isHR     = data.session_id.startsWith('hr_');
+                    const typeStr  = isHR ? '直聘申请' : '客服咨询';
+                    showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info');
+                }
+                renderChats();
+            }
+            updateBadge();
+        });
  
 /* ================================================================
    ⑲ 键盘快捷键 & 路由
