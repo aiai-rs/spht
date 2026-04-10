@@ -1287,9 +1287,14 @@ async function refresh(force = false) {
             return;
         }
 
-        const savedMutedSessions = curData.mutedSessions || [];
-        curData = await res.json();
-        curData.mutedSessions = savedMutedSessions;
+        const localMuted = JSON.parse(localStorage.getItem('adminMutedSessions') || '[]');
+        const savedMutedSessions = (curData.mutedSessions && curData.mutedSessions.length > 0) ? curData.mutedSessions : localMuted;
+        curData = await res.json();
+        if (curData.mutedSessions !== undefined) {
+            localStorage.setItem('adminMutedSessions', JSON.stringify(curData.mutedSessions));
+        } else {
+            curData.mutedSessions = savedMutedSessions;
+        }
 
         updateDashboardStats();
 
@@ -2646,20 +2651,26 @@ async function toggleMuteChat(btn) {
     const isMutedNow = curData.mutedSessions.includes(sid);
  
     if (!isMutedNow) {
-        curData.mutedSessions.push(sid);
-        btn.style.color = 'var(--danger)';
+        curData.mutedSessions.push(sid);
+        if (curData.mutedSessions.length > 1000) {
+            curData.mutedSessions.shift(); 
+        }
+
+        btn.style.color = 'var(--danger)';
         btn.innerHTML   = '<i class="ri-notification-off-line" style="font-size:18px;"></i>';
         btn.title       = '恢复通知';
         showNotification('已静音', '此会话通知已暂停', 'info');
     } else {
         curData.mutedSessions = curData.mutedSessions.filter(id => id !== sid);
         btn.style.color = 'var(--text-secondary)';
-        btn.innerHTML   = '<i class="ri-notification-3-line" style="font-size:18px;"></i>';
-        btn.title       = '静音此会话';
-        showNotification('已恢复', '此会话通知已开启', 'success');
-    }
- 
-    btn.style.transform  = 'scale(0.8)';
+        btn.innerHTML   = '<i class="ri-notification-3-line" style="font-size:18px;"></i>';
+        btn.title       = '静音此会话';
+        showNotification('已恢复', '此会话通知已开启', 'success');
+    }
+ 
+    localStorage.setItem('adminMutedSessions', JSON.stringify(curData.mutedSessions));
+ 
+    btn.style.transform  = 'scale(0.8)';
     setTimeout(() => { btn.style.transform = 'scale(1)'; btn.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)'; }, 50);
     renderChats();
  
@@ -2670,13 +2681,14 @@ async function toggleMuteChat(btn) {
         const d = await res.json();
         if (!d.success) throw new Error('Sync failed');
     } catch (e) {
-        // 回滚本地状态
-        if (isMutedNow) {
-            if (!curData.mutedSessions.includes(sid)) curData.mutedSessions.push(sid);
-        } else {
-            curData.mutedSessions = curData.mutedSessions.filter(id => id !== sid);
-        }
-        openChatPanel(sid);
+        // 回滚本地状态
+        if (isMutedNow) {
+            if (!curData.mutedSessions.includes(sid)) curData.mutedSessions.push(sid);
+        } else {
+            curData.mutedSessions = curData.mutedSessions.filter(id => id !== sid);
+        }
+        localStorage.setItem('adminMutedSessions', JSON.stringify(curData.mutedSessions));
+        openChatPanel(sid);
         renderChats();
         showNotification('错误', '网络异常，状态未保存', 'danger');
     }
