@@ -1268,18 +1268,17 @@ function nav(id, isPopState = false) {
  */
 async function refresh(force = false) {
     if (!adminToken) return;
- 
-    // [Fix-8] 仅在非强制刷新时跳过（避免打断用户正在输入的内容）
+
     if (!force) {
         const ae = document.activeElement;
         if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) {
             return;
         }
     }
- 
+
     try {
         const res = await fetch(`${API_BASE}/api/admin/all`, { headers: getAuthHeaders() });
- 
+
         if (res.status === 401) {
             localStorage.removeItem('adminToken');
             adminToken = null;
@@ -1287,11 +1286,13 @@ async function refresh(force = false) {
             showNotification('认证失效', '登录已过期，请重新登录', 'danger');
             return;
         }
- 
+
+        const savedMutedSessions = curData.mutedSessions || [];
         curData = await res.json();
+        curData.mutedSessions = savedMutedSessions;
+
         updateDashboardStats();
- 
-        // 避免覆盖用户正在编辑的文本框
+
         const ae = document.activeElement;
         if (!ae || ae.id !== 'ann-text') {
             document.getElementById('ann-text').value = curData.announcement || '';
@@ -1299,17 +1300,17 @@ async function refresh(force = false) {
         if (!ae || ae.id !== 'quick-replies-text') {
             document.getElementById('quick-replies-text').value = curData.quickReplies || '';
         }
- 
+
         document.getElementById('cur-rate').innerText = curData.rate || '--';
         document.getElementById('cur-fee').innerText  = curData.feeRate || 0;
- 
+
         let popVal = curData.popup;
         if (popVal === true || popVal === 'true') popVal = '86400000';
         document.getElementById('ann-pop').value = popVal || 'false';
- 
+
         const activePage = document.querySelector('.page.active');
         if (!activePage) return;
- 
+
         switch (activePage.id) {
             case 'prod':
                 renderProdManage(curData.products || []);
@@ -1324,7 +1325,6 @@ async function refresh(force = false) {
                 }
                 break;
             case 'funds':
-                // [Fix-10] 只在首次进入或手动查询时加载
                 if (!fundLogsLoaded) {
                     fundLogsLoaded = true;
                     loadBalanceLogs();
@@ -1339,9 +1339,10 @@ async function refresh(force = false) {
             case 'chat':
                 renderChats();
                 updateBadge();
+                if (curChat) renderMessages(curChat);
                 break;
         }
- 
+
     } catch (e) {
         console.error('刷新数据错误:', e);
         if (e.message && e.message.includes('Failed to fetch')) {
@@ -2542,7 +2543,7 @@ async function reply(btn) {
     const input = document.getElementById('reply-in');
     const t = input.value.trim();
     if (!t) return;
- 
+
     btn.disabled = true; btn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
     try {
         await fetch(`${API_BASE}/api/admin/reply`, {
@@ -2550,34 +2551,14 @@ async function reply(btn) {
             body: JSON.stringify({ sessionId: curChat, text: t }),
         });
         input.value = '';
-        refresh();  
-        if (curChat) renderMessages(curChat);
+        await refresh(true); 
     } catch (e) { showNotification('错误', '发送失败', 'danger'); }
-    finally { btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>'; }
+    finally { 
+        btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>'; 
+        input.focus();
+    }
 }
- 
-/** 快捷回复弹窗 */
-async function showQuickReplies() {
-    if (!curChat) { showNotification('提示', '请先选择会话', 'warning'); return; }
-    const replies = (curData.quickReplies || '').split('\n').filter(r => r.trim());
-    if (replies.length === 0) { showNotification('提示', '没有设置快捷回复，请到全局设置中添加', 'warning'); return; }
- 
-    const htmlOptions = replies.map(r =>
-        `<button class="btn-secondary"
-                 style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; white-space:normal;"
-                 onclick="sendDirectReply(this.getAttribute('data-reply')); Swal.close();"
-                 data-reply="${escapeHtml(r)}">
-            ${escapeHtml(r)}
-         </button>`
-    ).join('');
- 
-    Swal.fire({
-        title: '选择快捷回复',
-        html: `<div style="max-height:60vh; overflow-y:auto; padding:10px;">${htmlOptions}</div>`,
-        showConfirmButton: false, width: 400,
-    });
-}
- 
+
 async function sendDirectReply(text) {
     if (!curChat) return;
     try {
@@ -2585,23 +2566,21 @@ async function sendDirectReply(text) {
             method: 'POST', headers: getAuthHeaders(),
             body: JSON.stringify({ sessionId: curChat, text }),
         });
-        refresh();
-        if (curChat) renderMessages(curChat);
+        await refresh(true);
     } catch (e) { showNotification('错误', '发送失败', 'danger'); }
 }
- 
-/** 发送图片 */
+
 async function sendAdminChatImage(input) {
     if (!curChat) { showNotification('提示', '请先选择会话', 'warning'); return; }
     const file = input.files[0];
     if (!file) return;
     if (!file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i)) { showNotification('错误', '仅支持图片', 'danger'); input.value = ''; return; }
     if (file.size > 5 * 1024 * 1024) { showNotification('错误', '图片不能超过5MB', 'danger'); input.value = ''; return; }
- 
+
     const formData = new FormData(); formData.append('file', file);
     const sendBtn  = document.getElementById('chat-send-btn');
     sendBtn.disabled = true; sendBtn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
- 
+
     try {
         const res = await fetch(`${API_BASE}/api/upload`, {
             method: 'POST', headers: { 'Authorization': adminToken }, body: formData,
@@ -2612,8 +2591,7 @@ async function sendAdminChatImage(input) {
                 method: 'POST', headers: getAuthHeaders(),
                 body: JSON.stringify({ sessionId: curChat, text: d.url, msgType: 'image' }),
             });
-            refresh();
-            if (curChat) renderMessages(curChat);
+            await refresh(true);
         } else { showNotification('错误', d.error || '上传失败', 'danger'); }
     } catch (e) { showNotification('错误', '网络故障', 'danger'); }
     finally {
