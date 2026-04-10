@@ -1110,6 +1110,35 @@ function showNotification(title, message, type = 'info', onClickCallback = null)
         }
     }, 4000);
 }
+    function copyShippingAddress(el) {
+    const name = el.getAttribute('data-name');
+    const tel = el.getAttribute('data-tel');
+    const addr = el.getAttribute('data-addr');
+    const textToCopy = `👤 姓名：${name}\n📞 电话：${tel}\n📍 地址：${addr}`;
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            showNotification('复制成功', '收货地址已复制到剪贴板', 'success');
+        }).catch(err => {
+            showNotification('复制失败', '请手动复制', 'danger');
+        });
+    } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = textToCopy;
+        textArea.style.position = "fixed";
+        textArea.style.top = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            showNotification('复制成功', '收货地址已复制到剪贴板', 'success');
+        } catch (err) {
+            showNotification('复制失败', '请手动复制', 'danger');
+        }
+        document.body.removeChild(textArea);
+    }
+}
  
 /* ================================================================
    ② 全局状态 / State
@@ -1433,12 +1462,20 @@ function renderOrders() {
         let addrHtml = '';
         if (ship && ship.name) {
             addrHtml = `
-            <div style="background:var(--bg-body); padding:10px; border-radius:var(--radius-md); margin-top:8px; font-size:12px; color:var(--text-secondary);">
-                <div style="margin-bottom:4px; font-weight:500; color:var(--text-main);">
-                    <i class="ri-user-line"></i> ${escapeHtml(ship.name)}
-                    &nbsp;&nbsp;<i class="ri-phone-line"></i> ${escapeHtml(ship.tel)}
+            <div onclick="copyShippingAddress(this)" 
+                 data-name="${escapeHtml(ship.name)}" 
+                 data-tel="${escapeHtml(ship.tel)}" 
+                 data-addr="${escapeHtml(ship.addr)}"
+                 style="background:var(--bg-body); padding:10px; border-radius:var(--radius-md); margin-top:8px; font-size:12px; color:var(--text-secondary); cursor:pointer; border:1px dashed transparent; transition:var(--transition);"
+                 onmouseover="this.style.borderColor='var(--primary)'; this.style.background='var(--primary-light)';"
+                 onmouseout="this.style.borderColor='transparent'; this.style.background='var(--bg-body)';">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <div style="font-weight:500; color:var(--text-main);">
+                        👤 ${escapeHtml(ship.name)} &nbsp;&nbsp;📞 ${escapeHtml(ship.tel)}
+                    </div>
+                    <i class="ri-file-copy-line" style="color:var(--primary); font-size:14px;"></i>
                 </div>
-                <div><i class="ri-map-pin-line"></i> ${escapeHtml(ship.addr)}</div>
+                <div style="line-height:1.4;">📍 ${escapeHtml(ship.addr)}</div>
             </div>`;
         }
  
