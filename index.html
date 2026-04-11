@@ -1003,9 +1003,9 @@
             </div>
             <div class="chat-main-panel">
                 <div class="chat-header">
-                    <i class="ri-arrow-left-s-line chat-back-btn" onclick="closeChatMobile()"></i>
-                    <div style="font-weight:600; font-size:15px; color:var(--text-main);" id="chat-title-uid">未选择会话</div>
-                </div>
+                     <i class="ri-arrow-left-s-line chat-back-btn" onclick="closeChatMobile()"></i>
+                     <div id="chat-title-uid" style="flex:1; min-width:0;">未选择会话</div>
+                 </div>
                 <div id="chat-box" class="chat-messages">
                     <div style="height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; color:var(--text-muted);">
                         <i class="ri-message-3-line" style="font-size:40px; margin-bottom:16px; opacity:0.5;"></i>
@@ -2484,24 +2484,27 @@ function openChatPanel(sid) {
  
     // [Fix-3] 使用 data 属性绑定 sid，不内联拼接进 onclick
     document.getElementById('chat-title-uid').innerHTML = `
-        <div style="display:flex; align-items:center; gap:8px; width:100%;">
-            <span style="color:var(--primary);">[${escapeHtml(bossName)}]</span>
-            <span style="color:var(--success);">[${escapeHtml(typeStr)}]</span>
-            <span>UID: ${escapeHtml(rawUid)}</span>
-            <button id="btn-mute-chat"
-                    data-sid="${escapeHtml(sid)}"
-                    onclick="toggleMuteChat(this)"
-                    style="background:none; border:none; color:${isMuted ? 'var(--danger)' : 'var(--text-secondary)'}; cursor:pointer; padding:4px; display:flex; align-items:center;"
-                    title="${isMuted ? '恢复通知' : '静音此会话'}">
-                <i class="${isMuted ? 'ri-notification-off-line' : 'ri-notification-3-line'}" style="font-size:18px;"></i>
-            </button>
-            <button data-sid="${escapeHtml(sid)}"
-                    onclick="clearChatHistory(this.getAttribute('data-sid'))"
-                    style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center;"
-                    title="清空聊天记录">
-                <i class="ri-delete-bin-7-line" style="font-size:18px;"></i>
-            </button>
-        </div>`;
+    <div style="display:flex; flex-direction:column; width:100%;">
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span style="color:var(--primary); font-weight:600;">[${escapeHtml(bossName)}]</span>
+            <span style="font-weight:500;">UID: ${escapeHtml(rawUid)}</span>
+            <div style="margin-left:auto; display:flex; gap:8px;">
+                <button data-sid="${escapeHtml(sid)}"
+                        onclick="toggleMuteChat(this)"
+                        style="background:none; border:none; color:${isMuted ? 'var(--danger)' : 'var(--text-secondary)'}; cursor:pointer; padding:4px; display:flex; align-items:center;"
+                        title="${isMuted ? '恢复通知' : '静音此会话'}">
+                    <i class="${isMuted ? 'ri-notification-off-line' : 'ri-notification-3-line'}" style="font-size:18px;"></i>
+                </button>
+                <button data-sid="${escapeHtml(sid)}"
+                        onclick="clearChatHistory(this.getAttribute('data-sid'))"
+                        style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center;"
+                        title="清空聊天记录">
+                    <i class="ri-delete-bin-7-line" style="font-size:18px;"></i>
+                </button>
+            </div>
+        </div>
+        <div style="font-size:12px; color:var(--success); margin-top:2px;">${escapeHtml(typeStr)}</div>
+    </div>`;
  
     setTimeout(async () => {
         // 标记已读（本地）
@@ -2760,12 +2763,13 @@ function updateBadge() {
  * [Fix-9] 增加 renderChats() 调用，同步高亮状态
  */
 function closeChatMobile() {
-    curChat = null;
-    document.getElementById('chat-wrapper').classList.remove('active');
-    if (window.innerWidth <= 768) {
-        document.body.style.overflow = '';
-    }
-    setTimeout(() => { renderChats(); }, 300);
+    curChat = null;
+    document.getElementById('chat-wrapper').classList.remove('active');
+    document.getElementById('chat-title-uid').innerHTML = '未选择会话';
+    if (window.innerWidth <= 768) {
+        document.body.style.overflow = '';
+    }
+    setTimeout(() => { renderChats(); }, 300);
 }
  
 /* ================================================================
