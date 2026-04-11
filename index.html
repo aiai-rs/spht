@@ -1003,9 +1003,9 @@
             </div>
             <div class="chat-main-panel">
                 <div class="chat-header">
-                    <i class="ri-arrow-left-s-line chat-back-btn" onclick="closeChatMobile()"></i>
-                    <div style="font-weight:600; font-size:15px; color:var(--text-main);" id="chat-title-uid">未选择会话</div>
-                </div>
+                    <i class="ri-arrow-left-s-line chat-back-btn" onclick="closeChatMobile()"></i>
+                    <div style="font-weight:600; font-size:15px; color:var(--text-main); flex:1; min-width:0;" id="chat-title-uid">未选择会话</div>
+                </div>
                 <div id="chat-box" class="chat-messages">
                     <div style="height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; color:var(--text-muted);">
                         <i class="ri-message-3-line" style="font-size:40px; margin-bottom:16px; opacity:0.5;"></i>
@@ -2484,20 +2484,20 @@ function openChatPanel(sid) {
  
     // [Fix-3] 使用 data 属性绑定 sid，不内联拼接进 onclick
     document.getElementById('chat-title-uid').innerHTML = `
-        <div style="display:flex; align-items:center; gap:8px; width:100%;">
-            <span style="color:var(--primary);">[${escapeHtml(bossName)}]</span>
-            <span style="color:var(--success);">[${escapeHtml(typeStr)}]</span>
-            <span>UID: ${escapeHtml(rawUid)}</span>
+        <div style="display:flex; align-items:center; gap:8px; width:100%; overflow-x:auto; white-space:nowrap; padding-bottom:2px;">
+            <span style="color:var(--primary); white-space:nowrap; flex-shrink:0;">[${escapeHtml(bossName)}]</span>
+            <span style="color:var(--success); white-space:nowrap; flex-shrink:0;">[${escapeHtml(typeStr)}]</span>
+            <span style="white-space:nowrap; flex-shrink:0; margin-right:auto;">UID: ${escapeHtml(rawUid)}</span>
             <button id="btn-mute-chat"
                     data-sid="${escapeHtml(sid)}"
                     onclick="toggleMuteChat(this)"
-                    style="background:none; border:none; color:${isMuted ? 'var(--danger)' : 'var(--text-secondary)'}; cursor:pointer; padding:4px; display:flex; align-items:center;"
+                    style="background:none; border:none; color:${isMuted ? 'var(--danger)' : 'var(--text-secondary)'}; cursor:pointer; padding:4px; display:flex; align-items:center; flex-shrink:0;"
                     title="${isMuted ? '恢复通知' : '静音此会话'}">
                 <i class="${isMuted ? 'ri-notification-off-line' : 'ri-notification-3-line'}" style="font-size:18px;"></i>
             </button>
             <button data-sid="${escapeHtml(sid)}"
                     onclick="clearChatHistory(this.getAttribute('data-sid'))"
-                    style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center;"
+                    style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center; flex-shrink:0;"
                     title="清空聊天记录">
                 <i class="ri-delete-bin-7-line" style="font-size:18px;"></i>
             </button>
