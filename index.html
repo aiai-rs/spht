@@ -1004,7 +1004,7 @@
             <div class="chat-main-panel">
                 <div class="chat-header">
                     <i class="ri-arrow-left-s-line chat-back-btn" onclick="closeChatMobile()"></i>
-                    <div style="font-weight:600; font-size:15px; color:var(--text-main); flex:1; min-width:0;" id="chat-title-uid">未选择会话</div>
+                    <div style="font-weight:600; font-size:15px; color:var(--text-main);" id="chat-title-uid">未选择会话</div>
                 </div>
                 <div id="chat-box" class="chat-messages">
                     <div style="height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; color:var(--text-muted);">
@@ -2483,34 +2483,24 @@ function openChatPanel(sid) {
     const isMuted  = (curData.mutedSessions || []).includes(sid);
  
     // [Fix-3] 使用 data 属性绑定 sid，不内联拼接进 onclick
-    const titleContainer = document.getElementById('chat-title-uid');
-    titleContainer.style.flex = "1";
-    titleContainer.style.minWidth = "0";
-    
-    titleContainer.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-            <div style="display:flex; flex-direction:column; min-width:0; margin-right:8px;">
-                <div style="color:var(--primary); font-size:14px; font-weight:600; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">[${escapeHtml(bossName)}]</div>
-                <div style="display:flex; align-items:center; gap:4px; font-size:12px; color:var(--text-secondary); margin-top:2px;">
-                    <span style="color:var(--success); flex-shrink:0;">[${escapeHtml(typeStr)}]</span>
-                    <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">UID: ${escapeHtml(rawUid)}</span>
-                </div>
-            </div>
-            <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">
-                <button id="btn-mute-chat"
-                        data-sid="${escapeHtml(sid)}"
-                        onclick="toggleMuteChat(this)"
-                        style="background:none; border:none; color:${isMuted ? 'var(--danger)' : 'var(--text-secondary)'}; cursor:pointer; padding:4px; display:flex; align-items:center; justify-content:center;"
-                        title="${isMuted ? '恢复通知' : '静音此会话'}">
-                    <i class="${isMuted ? 'ri-notification-off-line' : 'ri-notification-3-line'}" style="font-size:20px;"></i>
-                </button>
-                <button data-sid="${escapeHtml(sid)}"
-                        onclick="clearChatHistory(this.getAttribute('data-sid'))"
-                        style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center; justify-content:center;"
-                        title="清空聊天记录">
-                    <i class="ri-delete-bin-7-line" style="font-size:20px;"></i>
-                </button>
-            </div>
+    document.getElementById('chat-title-uid').innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; width:100%;">
+            <span style="color:var(--primary);">[${escapeHtml(bossName)}]</span>
+            <span style="color:var(--success);">[${escapeHtml(typeStr)}]</span>
+            <span>UID: ${escapeHtml(rawUid)}</span>
+            <button id="btn-mute-chat"
+                    data-sid="${escapeHtml(sid)}"
+                    onclick="toggleMuteChat(this)"
+                    style="background:none; border:none; color:${isMuted ? 'var(--danger)' : 'var(--text-secondary)'}; cursor:pointer; padding:4px; display:flex; align-items:center;"
+                    title="${isMuted ? '恢复通知' : '静音此会话'}">
+                <i class="${isMuted ? 'ri-notification-off-line' : 'ri-notification-3-line'}" style="font-size:18px;"></i>
+            </button>
+            <button data-sid="${escapeHtml(sid)}"
+                    onclick="clearChatHistory(this.getAttribute('data-sid'))"
+                    style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center;"
+                    title="清空聊天记录">
+                <i class="ri-delete-bin-7-line" style="font-size:18px;"></i>
+            </button>
         </div>`;
  
     setTimeout(async () => {
