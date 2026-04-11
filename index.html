@@ -1248,42 +1248,41 @@ function getAuthHeaders() {
 ================================================================ */
  
 /**
- * 切换页面
- * @param {string} id          页面 ID
- * @param {boolean} isPopState 是否由 popstate 触发（避免重复 pushState）
- */
+ * 切换页面
+ * @param {string} id          页面 ID
+ * @param {boolean} isPopState 是否由 popstate 触发（避免重复 pushState）
+ */
 function nav(id, isPopState = false) {
-    // 切换页面显示
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    const targetPage = document.getElementById(id);
-    if (targetPage) targetPage.classList.add('active');
- 
-    // [Fix-6] 根据 data-page 属性激活菜单项，无需依赖 event 对象
-    document.querySelectorAll('.menu-item').forEach(m => {
-        m.classList.toggle('active', m.getAttribute('data-page') === id);
-    });
- 
-    // 聊天页重置
-    if (id === 'chat') {
-        curChat = null;
-        closeChatMobile();
-    }
- 
-    // 移动端：非聊天页恢复滚动
-    if (window.innerWidth <= 768) {
-        document.body.style.overflow = 'auto';
-        document.body.style.height   = 'auto';
-        const wrapper = document.getElementById('chat-wrapper');
-        if (wrapper) wrapper.classList.remove('active');
-    }
- 
-    // [Fix-10] 离开资金页时重置加载标志，下次进入重新拉取
-    if (id !== 'funds') fundLogsLoaded = false;
- 
-    window.scrollTo(0, 0);
-    refresh();
- 
-    if (!isPopState) history.pushState({ page: id }, null, '');
+    // 切换页面显示
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const targetPage = document.getElementById(id);
+    if (targetPage) targetPage.classList.add('active');
+ 
+    // [Fix-6] 根据 data-page 属性激活菜单项，无需依赖 event 对象
+    document.querySelectorAll('.menu-item').forEach(m => {
+        m.classList.toggle('active', m.getAttribute('data-page') === id);
+    });
+ 
+    // 聊天页重置
+    if (id === 'chat') {
+        curChat = null;
+        closeChatMobile();
+    }
+ 
+    // 移动端：非聊天页恢复滚动
+    if (window.innerWidth <= 768) {
+        document.body.style.overflow = '';
+        const wrapper = document.getElementById('chat-wrapper');
+        if (wrapper) wrapper.classList.remove('active');
+    }
+ 
+    // [Fix-10] 离开资金页时重置加载标志，下次进入重新拉取
+    if (id !== 'funds') fundLogsLoaded = false;
+ 
+    window.scrollTo(0, 0);
+    refresh();
+ 
+    if (!isPopState) history.pushState({ page: id }, null, '');
 }
  
 /* ================================================================
@@ -2464,61 +2463,62 @@ function renderChats() {
 }
  
 /**
- * 打开聊天面板
- * 原名 openChatPanel（清晰命名，同时保留 openChat 作为外部入口）
- */
-async function openChatPanel(sid) {
-    curChat = sid;
-    document.getElementById('chat-wrapper').classList.add('active');
-    if (window.innerWidth <= 768) {
-        document.body.style.overflow = 'hidden';
-        document.body.style.height   = '100dvh';
-    }
- 
-    const isHR   = sid.startsWith('hr_');
-    const rawUid = _getRawUid(sid);
-    const messages = (curData.chats || {})[sid] || [];
-    const source   = _getSessionSource(sid, messages);
- 
-    const bossName = source.includes('8888') ? '龍哥' : 'Boss';
-    const typeStr  = isHR ? '直聘沟通' : '在线客服';
-    const isMuted  = (curData.mutedSessions || []).includes(sid);
- 
-    // [Fix-3] 使用 data 属性绑定 sid，不内联拼接进 onclick
-    document.getElementById('chat-title-uid').innerHTML = `
-        <div style="display:flex; align-items:center; gap:8px; width:100%;">
-            <span style="color:var(--primary);">[${escapeHtml(bossName)}]</span>
-            <span style="color:var(--success);">[${escapeHtml(typeStr)}]</span>
-            <span>UID: ${escapeHtml(rawUid)}</span>
-            <button id="btn-mute-chat"
-                    data-sid="${escapeHtml(sid)}"
-                    onclick="toggleMuteChat(this)"
-                    style="background:none; border:none; color:${isMuted ? 'var(--danger)' : 'var(--text-secondary)'}; cursor:pointer; padding:4px; display:flex; align-items:center;"
-                    title="${isMuted ? '恢复通知' : '静音此会话'}">
-                <i class="${isMuted ? 'ri-notification-off-line' : 'ri-notification-3-line'}" style="font-size:18px;"></i>
-            </button>
-            <button data-sid="${escapeHtml(sid)}"
-                    onclick="clearChatHistory(this.getAttribute('data-sid'))"
-                    style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center;"
-                    title="清空聊天记录">
-                <i class="ri-delete-bin-7-line" style="font-size:18px;"></i>
-            </button>
-        </div>`;
- 
-    // 标记已读（本地）
-    if ((curData.chats || {})[sid]) {
-        curData.chats[sid].forEach(m => { if (m.sender === 'user') m.is_read = true; });
-    }
-    renderChats();
-    updateBadge();
-    renderMessages(sid);
- 
-    // 标记已读（服务端）
-    try {
-        await fetch(`${API_BASE}/api/admin/chat/read`, {
-            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: sid }),
-        });
-    } catch (e) { /* 非关键路径，静默处理 */ }
+ * 打开聊天面板
+ * 原名 openChatPanel（清晰命名，同时保留 openChat 作为外部入口）
+ */
+function openChatPanel(sid) {
+    curChat = sid;
+    document.getElementById('chat-wrapper').classList.add('active');
+    if (window.innerWidth <= 768) {
+        document.body.style.overflow = 'hidden';
+    }
+ 
+    const isHR   = sid.startsWith('hr_');
+    const rawUid = _getRawUid(sid);
+    const messages = (curData.chats || {})[sid] || [];
+    const source   = _getSessionSource(sid, messages);
+ 
+    const bossName = source.includes('8888') ? '龍哥' : 'Boss';
+    const typeStr  = isHR ? '直聘沟通' : '在线客服';
+    const isMuted  = (curData.mutedSessions || []).includes(sid);
+ 
+    // [Fix-3] 使用 data 属性绑定 sid，不内联拼接进 onclick
+    document.getElementById('chat-title-uid').innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; width:100%;">
+            <span style="color:var(--primary);">[${escapeHtml(bossName)}]</span>
+            <span style="color:var(--success);">[${escapeHtml(typeStr)}]</span>
+            <span>UID: ${escapeHtml(rawUid)}</span>
+            <button id="btn-mute-chat"
+                    data-sid="${escapeHtml(sid)}"
+                    onclick="toggleMuteChat(this)"
+                    style="background:none; border:none; color:${isMuted ? 'var(--danger)' : 'var(--text-secondary)'}; cursor:pointer; padding:4px; display:flex; align-items:center;"
+                    title="${isMuted ? '恢复通知' : '静音此会话'}">
+                <i class="${isMuted ? 'ri-notification-off-line' : 'ri-notification-3-line'}" style="font-size:18px;"></i>
+            </button>
+            <button data-sid="${escapeHtml(sid)}"
+                    onclick="clearChatHistory(this.getAttribute('data-sid'))"
+                    style="background:none; border:none; color:var(--danger); cursor:pointer; padding:4px; display:flex; align-items:center;"
+                    title="清空聊天记录">
+                <i class="ri-delete-bin-7-line" style="font-size:18px;"></i>
+            </button>
+        </div>`;
+ 
+    setTimeout(async () => {
+        // 标记已读（本地）
+        if ((curData.chats || {})[sid]) {
+            curData.chats[sid].forEach(m => { if (m.sender === 'user') m.is_read = true; });
+        }
+        renderChats();
+        updateBadge();
+        renderMessages(sid);
+     
+        // 标记已读（服务端）
+        try {
+            await fetch(`${API_BASE}/api/admin/chat/read`, {
+                method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: sid }),
+            });
+        } catch (e) { /* 非关键路径，静默处理 */ }
+    }, 50);
 }
  
 function openChat(sid) { openChatPanel(sid); history.pushState({ chat: sid }, null, ''); }
@@ -2644,15 +2644,22 @@ async function sendAdminChatImage(input) {
  
 /** 撤回消息 */
 async function recallMsg(msgId, sessionId) {
-    try {
-        const res = await fetch(`${API_BASE}/api/admin/chat/recall`, {
-            method: 'POST', headers: getAuthHeaders(),
-            body: JSON.stringify({ messageId: msgId, sessionId }),
-        });
-        const d = await res.json();
-        if (d.success) showNotification('成功', '消息已撤回', 'success');
-        else showNotification('失败', d.msg || '撤回失败', 'warning');
-    } catch (e) { showNotification('错误', '网络异常', 'danger'); }
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/chat/recall`, {
+            method: 'POST', headers: getAuthHeaders(),
+            body: JSON.stringify({ messageId: msgId, sessionId }),
+        });
+        const d = await res.json();
+        if (d.success) {
+            showNotification('成功', '消息已撤回', 'success');
+            if (curData.chats && curData.chats[sessionId]) {
+                const msg = curData.chats[sessionId].find(m => m.id == msgId);
+                if (msg) { msg.content = '此消息已撤回'; msg.msg_type = 'system'; }
+                if (curChat === sessionId) renderMessages(sessionId);
+                renderChats();
+            }
+        } else showNotification('失败', d.msg || '撤回失败', 'warning');
+    } catch (e) { showNotification('错误', '网络异常', 'danger'); }
 }
  
 /** 清空聊天记录 */
@@ -2749,17 +2756,16 @@ function updateBadge() {
 }
  
 /**
- * 移动端关闭聊天面板
- * [Fix-9] 增加 renderChats() 调用，同步高亮状态
- */
+ * 移动端关闭聊天面板
+ * [Fix-9] 增加 renderChats() 调用，同步高亮状态
+ */
 function closeChatMobile() {
-    curChat = null;
-    document.getElementById('chat-wrapper').classList.remove('active');
-    if (window.innerWidth <= 768) {
-        document.body.style.overflow = 'auto';
-        document.body.style.height   = 'auto';
-    }
-    renderChats(); // [Fix-9] 同步移除列表中的高亮
+    curChat = null;
+    document.getElementById('chat-wrapper').classList.remove('active');
+    if (window.innerWidth <= 768) {
+        document.body.style.overflow = '';
+    }
+    setTimeout(() => { renderChats(); }, 300);
 }
  
 /* ================================================================
