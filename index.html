@@ -2833,12 +2833,12 @@ socket.on('message_recalled', (data) => {
 });
  
 socket.on('new_message', (data) => {
-    if (!curData.chats) curData.chats = {};
-    if (!curData.chats[data.session_id]) curData.chats[data.session_id] = [];
- 
-    // 去重：防止 refresh() 与 socket 事件竞争重复追加
-    if (curData.chats[data.session_id].some(m => m.id === data.id)) return;
-    curData.chats[data.session_id].push(data);
+    if (!curData.chats) curData.chats = {};
+    if (!curData.chats[data.session_id]) curData.chats[data.session_id] = [];
+ 
+    // 去重：防止 refresh() 与 socket 事件竞争重复追加，修复数据类型不同导致的强等于校验失败
+    if (curData.chats[data.session_id].some(m => m.id == data.id)) return;
+    curData.chats[data.session_id].push(data);
  
     const isChatPageActive = document.getElementById('chat').classList.contains('active');
  
