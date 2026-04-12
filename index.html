@@ -2541,18 +2541,19 @@ function renderMessages(sid) {
     box.innerHTML = msgs.map(m => {
         const time  = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const isMe  = m.sender === 'admin';
- 
+        const readStatus = isMe ? (m.is_read ? '<span style="color:var(--success); margin-right:8px;">已读</span>' : '<span style="color:var(--text-muted); margin-right:8px;">未读</span>') : '';
+
         // 系统消息
         if (m.msg_type === 'system') {
             return `<div style="text-align:center; font-size:11px; color:var(--text-muted); margin:8px 0;">${escapeHtml(m.content)}</div>`;
         }
- 
+
         // 图片消息
         // [Fix-1] 使用 escapeHtml 处理 URL，防止注入
         const isImage = m.msg_type === 'image'
             || (typeof m.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(m.content))
             || (typeof m.content === 'string' && m.content.includes('cloudinary.com'));
- 
+
         let contentHtml;
         if (isImage) {
             const safeUrl = escapeHtml(m.content);
@@ -2561,7 +2562,7 @@ function renderMessages(sid) {
         } else {
             contentHtml = escapeHtml(m.content);
         }
- 
+
         // [Fix-3] 撤回按钮用 data 属性，不内联 sessionId
         const recallBtn = isMe
             ? `<span onclick="recallMsg(${m.id}, '${escapeHtml(sid)}')"
@@ -2574,7 +2575,7 @@ function renderMessages(sid) {
         <div class="msg-row ${isMe ? 'admin' : 'user'}">
             <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
                 <div class="msg-bubble" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
-                <div class="msg-time">${recallBtn}${time}</div>
+                <div class="msg-time">${recallBtn}${readStatus}${time}</div>
             </div>
         </div>`;
     }).join('');
@@ -2815,6 +2816,13 @@ socket.on('admin_chat_read', (data) => {
     }
 });
  
+socket.on('user_chat_read', (data) => {
+    if (curData.chats && curData.chats[data.sessionId]) {
+        curData.chats[data.sessionId].forEach(m => { if (m.sender === 'admin') m.is_read = true; });
+        if (curChat === data.sessionId) renderMessages(data.sessionId);
+    }
+});
+
 socket.on('message_recalled', (data) => {
     if (curData.chats && curData.chats[data.sessionId]) {
         const msg = curData.chats[data.sessionId].find(m => m.id == data.messageId);
