@@ -1110,6 +1110,32 @@ function showNotification(title, message, type = 'info', onClickCallback = null)
         }
     }, 4000);
 }
+
+function showQuickReplies() {
+    if (!curData.quickReplies) {
+        showNotification('提示', '暂无快捷回复，请在全局设置中配置', 'warning');
+        return;
+    }
+    const replies = curData.quickReplies.split('\n').filter(r => r.trim());
+    if (replies.length === 0) {
+        showNotification('提示', '暂无快捷回复，请在全局设置中配置', 'warning');
+        return;
+    }
+    let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
+    replies.forEach(r => {
+        html += `<button class="btn-secondary" style="text-align:left; padding:10px; white-space:normal; height:auto; line-height:1.4;" onclick="document.getElementById('reply-in').value='${escapeHtml(r)}'; Swal.close();">${escapeHtml(r)}</button>`;
+    });
+    html += '</div>';
+
+    Swal.fire({
+        title: '快捷回复',
+        html: html,
+        showConfirmButton: false,
+        showCloseButton: true,
+        background: 'var(--bg-card)',
+    });
+}
+
     function copyShippingAddress(el) {
     const name = el.getAttribute('data-name');
     const tel = el.getAttribute('data-tel');
@@ -1296,66 +1322,53 @@ function nav(id, isPopState = false) {
  */
 async function refresh(force = false) {
     if (!adminToken) return;
-
     if (!force) {
         const ae = document.activeElement;
         if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) {
             return;
         }
     }
-
     try {
-        const res = await fetch(`${API_BASE}/api/admin/all`, { headers: getAuthHeaders() });
-
-        if (res.status === 401) {
+        const statsRes = await fetch(`${API_BASE}/api/admin/stats`, { headers: getAuthHeaders() });
+        if (statsRes.status === 401) {
             localStorage.removeItem('adminToken');
             adminToken = null;
             document.getElementById('login-modal').style.display = 'flex';
             showNotification('认证失效', '登录已过期，请重新登录', 'danger');
             return;
         }
-
-        const localMuted = JSON.parse(localStorage.getItem('adminMutedSessions') || '[]');
-        const savedMutedSessions = (curData.mutedSessions && curData.mutedSessions.length > 0) ? curData.mutedSessions : localMuted;
-        curData = await res.json();
-        if (curData.mutedSessions !== undefined) {
-            localStorage.setItem('adminMutedSessions', JSON.stringify(curData.mutedSessions));
-        } else {
-            curData.mutedSessions = savedMutedSessions;
-        }
-
-        updateDashboardStats();
-
-        const ae = document.activeElement;
-        if (!ae || ae.id !== 'ann-text') {
-            document.getElementById('ann-text').value = curData.announcement || '';
+        const statsData = await statsRes.json();
+        if (statsData.success) {
+            curData.rate = statsData.rate;
+            curData.feeRate = statsData.feeRate;
+            curData.announcement = statsData.announcement;
+            curData.popup = statsData.popup;
+            curData.visits = statsData.visits;
+            curData.quickReplies = statsData.quickReplies;
+            curData.mutedSessions = statsData.mutedSessions || JSON.parse(localStorage.getItem('adminMutedSessions') || '[]');
+            localStorage.setItem('adminMutedSessions', JSON.stringify(curData.mutedSessions));
+            updateDashboardStats();
+            const ae = document.activeElement;
+            if (!ae || ae.id !== 'ann-text') {
+                document.getElementById('ann-text').value = curData.announcement || '';
+            }
+            if (!ae || ae.id !== 'quick-replies-text') {
+                document.getElementById('quick-replies-text').value = curData.quickReplies || '';
+            }
+            document.getElementById('cur-rate').innerText = curData.rate || '--';
+            document.getElementById('cur-fee').innerText  = curData.feeRate || 0;
+            let popVal = curData.popup;
+            if (popVal === true || popVal === 'true') popVal = '86400000';
+            document.getElementById('ann-pop').value = popVal || 'false';
         }
-        if (!ae || ae.id !== 'quick-replies-text') {
-            document.getElementById('quick-replies-text').value = curData.quickReplies || '';
-        }
-
-        document.getElementById('cur-rate').innerText = curData.rate || '--';
-        document.getElementById('cur-fee').innerText  = curData.feeRate || 0;
-
-        let popVal = curData.popup;
-        if (popVal === true || popVal === 'true') popVal = '86400000';
-        document.getElementById('ann-pop').value = popVal || 'false';
-
         const activePage = document.querySelector('.page.active');
         if (!activePage) return;
-
         switch (activePage.id) {
             case 'prod':
-                renderProdManage(curData.products || []);
-                renderCategorySort();
-                if (document.getElementById('hot-prod-modal')?.style.display === 'flex') {
-                    renderHotProdList();
-                }
+                loadProductsPage();
                 break;
             case 'hire':
-                if (!document.getElementById('h-list-container').innerHTML.trim()) {
-                    renderHireList(curData.hiring);
-                }
+                loadHireList();
                 break;
             case 'funds':
                 if (!fundLogsLoaded) {
@@ -1364,18 +1377,16 @@ async function refresh(force = false) {
                 }
                 break;
             case 'order':
-                renderOrders();
+                loadOrdersPage();
                 break;
             case 'users':
-                renderUsers();
+                loadUsersPage();
                 break;
             case 'chat':
-                renderChats();
+                loadChatSessions(true);
                 updateBadge();
-                if (curChat) renderMessages(curChat);
                 break;
         }
-
     } catch (e) {
         console.error('刷新数据错误:', e);
         if (e.message && e.message.includes('Failed to fetch')) {
@@ -1389,25 +1400,19 @@ async function refresh(force = false) {
 ================================================================ */
  
 function updateDashboardStats() {
-    const orders  = curData.orders || [];
-    const today   = new Date(); today.setHours(0, 0, 0, 0);
- 
-    const todayOrders = orders.filter(o => new Date(o.created_at) >= today);
-    document.getElementById('today-orders').textContent = todayOrders.length;
-    const todayAmount = todayOrders.reduce((s, o) => s + parseFloat(o.usdt_amount || 0), 0);
-    document.getElementById('today-amount').textContent = `金额: ${todayAmount.toFixed(2)} USDT`;
- 
-    document.getElementById('pending-orders').textContent = orders.filter(o => o.status === '待支付').length;
-    document.getElementById('total-users').textContent    = (curData.users || []).length;
-    document.getElementById('total-products').textContent = (curData.products || []).length;
- 
-    const v     = curData.visits || [];
-    const bData = v.find(i => !i.domain.includes('8888')) || { today: 0, yesterday: 0 };
-    const lData = v.find(i =>  i.domain.includes('8888')) || { today: 0, yesterday: 0 };
-    document.getElementById('boss-today').innerText     = bData.today;
+    const stats = curData.stats || {};
+    document.getElementById('today-orders').textContent = stats.todayOrders || 0;
+    document.getElementById('today-amount').textContent = `金额: ${(stats.todayAmount || 0).toFixed(2)} USDT`;
+    document.getElementById('pending-orders').textContent = stats.pendingOrders || 0;
+    document.getElementById('total-users').textContent = stats.totalUsers || 0;
+    document.getElementById('total-products').textContent = stats.totalProducts || 0;
+    const visits = curData.visits || [];
+    const bData = visits.find(i => !i.domain.includes('8888')) || { today: 0, yesterday: 0 };
+    const lData = visits.find(i =>  i.domain.includes('8888')) || { today: 0, yesterday: 0 };
+    document.getElementById('boss-today').innerText = bData.today;
     document.getElementById('boss-yesterday').innerText = bData.yesterday;
-    document.getElementById('lg-today').innerText       = lData.today;
-    document.getElementById('lg-yesterday').innerText   = lData.yesterday;
+    document.getElementById('lg-today').innerText = lData.today;
+    document.getElementById('lg-yesterday').innerText = lData.yesterday;
 }
  
 /* ================================================================
@@ -1417,45 +1422,48 @@ function updateDashboardStats() {
 /**
  * 渲染订单列表（含搜索/筛选/分页）
  */
-function renderOrders() {
-    document.getElementById('order-loading').style.display = 'none';
-    const orders     = curData.orders || [];
-    const searchTerm = document.getElementById('order-search').value.toLowerCase();
-    const filterSt   = document.getElementById('order-filter').value;
- 
-    let filtered = orders;
-    if (searchTerm) {
-        filtered = filtered.filter(o =>
-            (o.order_id   && o.order_id.toLowerCase().includes(searchTerm)) ||
-            (o.product_name && o.product_name.toLowerCase().includes(searchTerm)) ||
-            (o.contact    && o.contact.toLowerCase().includes(searchTerm))
-        );
-    }
-    if (filterSt !== 'all') {
-        const statusMap = { pending: '待支付', paid: '已支付', cancelled: '已取消' };
-        filtered = filtered.filter(o => o.status === statusMap[filterSt]);
-    }
- 
-    totalOrderPages = Math.ceil(filtered.length / ordersPerPage) || 1;
-    if (currentOrderPage > totalOrderPages) currentOrderPage = totalOrderPages;
- 
-    const startIdx   = (currentOrderPage - 1) * ordersPerPage;
-    const pageOrders = filtered.slice(startIdx, startIdx + ordersPerPage);
- 
+let orderCurrentPage = 1;
+let orderTotalPages = 1;
+let orderSearchTerm = '';
+let orderStatusFilter = 'all';
+async function loadOrdersPage(page = 1) {
     const tbody = document.getElementById('order-list');
- 
-    if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">暂无匹配订单</td></tr>`;
-        document.getElementById('order-pagination').style.display = 'none';
+    const loadingDiv = document.getElementById('order-loading');
+    loadingDiv.style.display = 'block';
+    tbody.innerHTML = '';
+    try {
+        const params = new URLSearchParams({
+            page: page,
+            limit: ordersPerPage,
+            search: orderSearchTerm,
+            status: orderStatusFilter
+        });
+        const res = await fetch(`${API_BASE}/api/admin/orders?${params}`, { headers: getAuthHeaders() });
+        const data = await res.json();
+        if (data.success) {
+            orderCurrentPage = data.currentPage;
+            orderTotalPages = data.totalPages;
+            renderOrderTable(data.orders);
+            renderOrderPagination();
+        } else {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--danger);">加载失败</td></tr>`;
+        }
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--danger);">网络错误</td></tr>`;
+    } finally {
+        loadingDiv.style.display = 'none';
+    }
+}
+function renderOrderTable(orders) {
+    const tbody = document.getElementById('order-list');
+    if (orders.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">暂无订单</td></tr>`;
         return;
     }
- 
-    tbody.innerHTML = pageOrders.map(o => {
-        const isPaid  = o.status === '已支付';
+    tbody.innerHTML = orders.map(o => {
+        const isPaid = o.status === '已支付';
         const quantity = o.quantity || 1;
         const productName = o.product_name || '未知商品';
- 
-        // 解析收货地址
         let ship = null;
         try { ship = JSON.parse(o.shipping_info); } catch (e) {}
         let addrHtml = '';
@@ -1477,16 +1485,11 @@ function renderOrders() {
                 <div style="line-height:1.4;">📍 ${escapeHtml(ship.addr)}</div>
             </div>`;
         }
- 
-        const money       = o.payment_method === 'USDT' ? `${o.usdt_amount} USDT` : `¥${o.cny_amount} CNY`;
-        const user        = (curData.users || []).find(u => u.id === o.user_id) || {};
-        const userContact = user.contact || '未知用户';
-        const userDisplay = user.display_name || user.contact || '未知';
- 
-        // 取消 / 状态操作
+        const money = o.payment_method === 'USDT' ? `${o.usdt_amount} USDT` : `¥${o.cny_amount} CNY`;
+        const userContact = o.user_contact || '未知用户';
+        const userDisplay = o.user_display || userContact;
         let action = '';
         if (!isPaid && o.status !== '已取消' && o.status !== '已关闭') {
-            // [Fix-2] 使用 data-orderid 属性 + 独立函数替代内联 onclick，消除 XSS 风险
             action += `
                 <button onclick="cancelOrderAdmin('${escapeHtml(o.order_id)}')"
                         style="background:var(--danger); width:100%; margin-bottom:8px; font-size:12px; padding:6px 12px;">
@@ -1497,10 +1500,7 @@ function renderOrders() {
         if (o.status === '已取消' || (o.status || '').includes('取消')) {
             action += `<div style="color:var(--danger); font-size:12px; font-weight:500; margin-top:4px;"><i class="ri-close-circle-line"></i> 订单已取消</div>`;
         }
- 
-        // 收款二维码上传
         if (!isPaid && o.payment_method !== 'USDT' && o.status !== '已取消') {
-            // [Fix-2] qrcode_url 不再直接插入 onclick，改用 data 属性 + viewQrcode()
             const qrPreviewHtml = o.qrcode_url
                 ? `<div style="margin-top:8px; position:relative; width:48px; height:48px; border-radius:4px; overflow:hidden; border:1px solid var(--border-color); cursor:pointer;"
                         data-qrurl="${escapeHtml(o.qrcode_url)}" onclick="viewQrcode(this)">
@@ -1526,8 +1526,6 @@ function renderOrders() {
                     ${qrPreviewHtml}
                 </div>`;
         }
- 
-        // 物流单号
         const trackHtml = `
             <div style="margin-top:8px; display:flex; gap:8px;">
                 <input id="track-${escapeHtml(o.order_id)}" value="${escapeHtml(o.tracking_number || '')}"
@@ -1535,15 +1533,12 @@ function renderOrders() {
                 <button class="btn-secondary" onclick="saveTrack('${escapeHtml(o.order_id)}')"
                         style="padding:6px 12px; font-size:12px;">保存</button>
             </div>`;
- 
         const sourceBadge = (o.source || '').includes('8888')
             ? '<span class="tag" style="background:#fef3c7; color:#d97706;">龍哥</span>'
             : '<span class="tag" style="background:#e0e7ff; color:#4f46e5;">Boss</span>';
- 
         const variantDisplay = o.variant_name
             ? `<div style="color:var(--primary); font-size:11px; margin-top:2px;">规格: ${escapeHtml(o.variant_name)}</div>`
             : '';
- 
         return `
         <tr>
             <td>
@@ -1573,16 +1568,23 @@ function renderOrders() {
             </td>
         </tr>`;
     }).join('');
- 
+}
+function renderOrderPagination() {
     const pagination = document.getElementById('order-pagination');
-    if (filtered.length > ordersPerPage) {
-        pagination.style.display = 'flex';
-        document.getElementById('order-page-info').textContent = `${currentOrderPage} / ${totalOrderPages}`;
-        document.getElementById('order-prev').disabled = currentOrderPage === 1;
-        document.getElementById('order-next').disabled = currentOrderPage === totalOrderPages;
-    } else {
+    if (orderTotalPages <= 1) {
         pagination.style.display = 'none';
+        return;
     }
+    pagination.style.display = 'flex';
+    document.getElementById('order-page-info').textContent = `${orderCurrentPage} / ${orderTotalPages}`;
+    document.getElementById('order-prev').disabled = orderCurrentPage === 1;
+    document.getElementById('order-next').disabled = orderCurrentPage === orderTotalPages;
+}
+const searchOrders = debounce(() => { orderSearchTerm = document.getElementById('order-search').value; loadOrdersPage(1); }, 300);
+function filterOrders() { orderStatusFilter = document.getElementById('order-filter').value; loadOrdersPage(1); }
+function changeOrderPage(delta) {
+    const newPage = orderCurrentPage + delta;
+    if (newPage >= 1 && newPage <= orderTotalPages) { loadOrdersPage(newPage); }
 }
  
 /** 查看二维码大图（替代原内联 onclick 中的 Swal 调用） */
@@ -1591,12 +1593,6 @@ function viewQrcode(el) {
     if (url) Swal.fire({ imageUrl: url, showConfirmButton: false, background: 'transparent' });
 }
  
-const searchOrders = debounce(() => { currentOrderPage = 1; renderOrders(); }, 300);
-function filterOrders() { currentOrderPage = 1; renderOrders(); }
-function changeOrderPage(delta) {
-    const newPage = currentOrderPage + delta;
-    if (newPage >= 1 && newPage <= totalOrderPages) { currentOrderPage = newPage; renderOrders(); }
-}
  
 /* ================================================================
    ⑩ 用户管理
@@ -1609,41 +1605,48 @@ function setUserSourceFilter(el) {
     renderUsers();
 }
  
-function renderUsers() {
-    const users    = curData.users || [];
-    const filterEl = document.querySelector('#user-source-filter-container .cat-tab.active');
-    const filterVal = filterEl ? filterEl.getAttribute('data-val') : 'all';
- 
-    let base = users;
-    if (filterVal !== 'all') {
-        base = users.filter(u => {
-            const isLg = (u.source || '').includes('8888');
-            return filterVal === 'longge' ? isLg : !isLg;
+let userCurrentPage = 1;
+let userTotalPages = 1;
+let userSearchTerm = '';
+let userSourceFilter = 'all';
+const USERS_PER_PAGE = 30;
+async function loadUsersPage(page = 1) {
+    const container = document.getElementById('user-list');
+    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">加载中...</div>';
+    try {
+        const params = new URLSearchParams({
+            page: page,
+            limit: USERS_PER_PAGE,
+            search: userSearchTerm,
+            source: userSourceFilter
         });
+        const res = await fetch(`${API_BASE}/api/admin/users_page?${params}`, { headers: getAuthHeaders() });
+        const data = await res.json();
+        if (data.success) {
+            userCurrentPage = data.currentPage;
+            userTotalPages = data.totalPages;
+            document.getElementById('user-count').textContent = data.total;
+            renderUserList(data.users);
+            renderUserPagination();
+        } else {
+            container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">加载失败</div>';
+        }
+    } catch (e) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">网络错误</div>';
     }
-    document.getElementById('user-count').textContent = base.length;
- 
-    const searchTerm = (document.getElementById('user-search').value || '').toLowerCase();
-    const filtered = searchTerm
-        ? base.filter(u =>
-            (u.contact && u.contact.toLowerCase().includes(searchTerm)) ||
-            (u.id && String(u.id).includes(searchTerm))
-          )
-        : base;
- 
-    const userList = document.getElementById('user-list');
-    if (filtered.length === 0) {
-        userList.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">无匹配用户</div>';
+}
+function renderUserList(users) {
+    const container = document.getElementById('user-list');
+    if (users.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">无匹配用户</div>';
         return;
     }
- 
-    userList.innerHTML = filtered.map(user => {
-        const hasOrder = (curData.orders || []).some(o => o.user_id == user.id);
-        const isLg     = (user.source || '').includes('8888');
+    container.innerHTML = users.map(user => {
+        const hasOrder = user.has_order;
+        const isLg = (user.source || '').includes('8888');
         const sourceBadge = isLg
             ? '<span class="tag" style="background:#fef3c7; color:#d97706; padding:0 6px;">龍哥</span>'
             : '<span class="tag" style="background:#e0e7ff; color:#4f46e5; padding:0 6px;">Boss</span>';
- 
         return `
         <div class="user-item" style="flex-direction:column; gap:12px;">
             <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
@@ -1691,9 +1694,39 @@ function renderUsers() {
         </div>`;
     }).join('');
 }
- 
-// [Fix-5] 新增 searchUsers 函数（带防抖）
-const searchUsers = debounce(() => renderUsers(), 300);
+function renderUserPagination() {
+    let paginationDiv = document.getElementById('user-pagination');
+    if (!paginationDiv) {
+        const container = document.getElementById('user-list');
+        paginationDiv = document.createElement('div');
+        paginationDiv.id = 'user-pagination';
+        paginationDiv.className = 'pagination';
+        container.parentNode.appendChild(paginationDiv);
+    }
+    if (userTotalPages <= 1) {
+        paginationDiv.style.display = 'none';
+        return;
+    }
+    paginationDiv.style.display = 'flex';
+    paginationDiv.innerHTML = `
+        <button class="page-btn" onclick="changeUserPage(-1)" ${userCurrentPage === 1 ? 'disabled' : ''}>上一页</button>
+        <span style="font-size:13px; color:var(--text-secondary);">${userCurrentPage} / ${userTotalPages}</span>
+        <button class="page-btn" onclick="changeUserPage(1)" ${userCurrentPage === userTotalPages ? 'disabled' : ''}>下一页</button>
+    `;
+}
+function changeUserPage(delta) {
+    const newPage = userCurrentPage + delta;
+    if (newPage >= 1 && newPage <= userTotalPages) {
+        loadUsersPage(newPage);
+    }
+}
+const searchUsers = debounce(() => { userSearchTerm = document.getElementById('user-search').value; loadUsersPage(1); }, 300);
+function setUserSourceFilter(el) {
+    document.querySelectorAll('#user-source-filter-container .cat-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    userSourceFilter = el.getAttribute('data-val');
+    loadUsersPage(1);
+}
  
 async function delUser(uid) {
     const res = await Swal.fire({
@@ -1771,32 +1804,58 @@ async function initiateChat(uid) {
    ⑪ 商品管理
 ================================================================ */
  
-function switchCatFilter(cat) {
-    currentCatFilter = cat;
-    renderProdManage(curData.products || []);
-}
- 
-function renderProdManage(list) {
+let currentProductPage = 1;
+const PRODUCTS_PER_PAGE = 30;
+let totalProductPages = 1;
+let currentProductCategoryFilter = '全部';
+let cachedProductCategories = [];
+
+async function loadProductsPage(page = 1, category = currentProductCategoryFilter) {
     const container = document.getElementById('prod-list-manage');
-    if (!list || list.length === 0) {
-        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">暂无商品数据</div>';
-        return;
+    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);"><div class="loader"></div> 加载商品列表中...</div>';
+    try {
+        const url = `${API_BASE}/api/admin/products?page=${page}&limit=${PRODUCTS_PER_PAGE}&category=${encodeURIComponent(category === '全部' ? '' : category)}`;
+        const res = await fetch(url, { headers: getAuthHeaders() });
+        if (res.status === 401) {
+            localStorage.removeItem('adminToken');
+            adminToken = null;
+            document.getElementById('login-modal').style.display = 'flex';
+            showNotification('认证失效', '请重新登录', 'danger');
+            return;
+        }
+        const data = await res.json();
+               if (data.success) {
+            currentProductPage = page;
+            totalProductPages = data.totalPages;
+            cachedProductCategories = data.categories || [];
+            curData.products = data.products;
+            renderProductListContent(data.products);
+            renderProductPagination();
+        } else {
+            container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">加载失败，请重试</div>';
+        }
+    } catch (e) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">网络错误，请检查连接</div>';
     }
- 
-    const cats = ['全部', ...new Set(list.map(p => p.category))];
-    if (!cats.includes(currentCatFilter)) currentCatFilter = '全部';
-    const filtered = currentCatFilter === '全部' ? list : list.filter(p => p.category === currentCatFilter);
- 
+}
+
+function renderProductListContent(products) {
+    const container = document.getElementById('prod-list-manage');
+    const categories = ['全部', ...cachedProductCategories];
+    if (!categories.includes(currentProductCategoryFilter)) {
+        currentProductCategoryFilter = '全部';
+    }
+
     const tabsHtml = `
         <div class="cat-tabs">
-            ${cats.map(c => `<div class="cat-tab ${currentCatFilter === c ? 'active' : ''}" onclick="switchCatFilter('${escapeHtml(c)}')">${escapeHtml(c)}</div>`).join('')}
+            ${categories.map(c => `<div class="cat-tab ${currentProductCategoryFilter === c ? 'active' : ''}" onclick="switchProductCategory('${escapeHtml(c)}')">${escapeHtml(c)}</div>`).join('')}
         </div>`;
- 
-    const listHtml = filtered.length === 0
-        ? '<div style="text-align:center; padding:20px; color:var(--text-muted);">此分类为空</div>'
-        : filtered.map(p => {
+
+    const listHtml = products.length === 0
+        ? '<div style="text-align:center; padding:20px; color:var(--text-muted);">此分类暂无商品</div>'
+        : products.map(p => {
             let imgHtml = '<div style="width:48px; height:48px; background:var(--bg-body); border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; color:var(--text-muted); margin-right:16px;"><i class="ri-image-line"></i></div>';
-            let images  = [];
+            let images = [];
             try { images = p.image_url ? JSON.parse(p.image_url) : []; }
             catch (e) { if (p.image_url) images = [p.image_url]; }
             if (images.length > 0) {
@@ -1804,7 +1863,7 @@ function renderProdManage(list) {
                 if (!firstImg.startsWith('data:') && !firstImg.startsWith('http')) firstImg = `${API_BASE}${firstImg}`;
                 imgHtml = `<img src="${escapeHtml(firstImg)}" style="width:48px; height:48px; object-fit:cover; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-right:16px;">`;
             }
- 
+
             return `
             <div class="user-item" style="flex-direction:column; gap:12px;">
                 <div style="display:flex; width:100%; align-items:center; gap:12px;">
@@ -1842,9 +1901,50 @@ function renderProdManage(list) {
                 </div>
             </div>`;
         }).join('');
- 
+
     container.innerHTML = tabsHtml + `<div style="margin-top:16px; border:1px solid var(--border-color); border-radius:var(--radius-lg); overflow:hidden;">${listHtml}</div>`;
 }
+
+function renderProductPagination() {
+    let paginationDiv = document.getElementById('product-pagination');
+    if (!paginationDiv) {
+        const container = document.getElementById('prod-list-manage');
+        paginationDiv = document.createElement('div');
+        paginationDiv.id = 'product-pagination';
+        paginationDiv.className = 'pagination';
+        container.parentNode.appendChild(paginationDiv);
+    }
+    if (totalProductPages <= 1) {
+        paginationDiv.style.display = 'none';
+        return;
+    }
+    paginationDiv.style.display = 'flex';
+    paginationDiv.innerHTML = `
+        <button class="page-btn" onclick="changeProductPage(-1)" ${currentProductPage === 1 ? 'disabled' : ''}>上一页</button>
+        <span style="font-size:13px; color:var(--text-secondary);">${currentProductPage} / ${totalProductPages}</span>
+        <button class="page-btn" onclick="changeProductPage(1)" ${currentProductPage === totalProductPages ? 'disabled' : ''}>下一页</button>
+    `;
+}
+
+function changeProductPage(delta) {
+    const newPage = currentProductPage + delta;
+    if (newPage >= 1 && newPage <= totalProductPages) {
+        loadProductsPage(newPage, currentProductCategoryFilter);
+    }
+}
+
+function switchProductCategory(cat) {
+    currentProductCategoryFilter = cat;
+    loadProductsPage(1, cat);
+}
+
+// 将原 switchCatFilter 替换为 switchProductCategory
+const switchCatFilter = switchProductCategory;
+
+// 修改 nav 函数中商品页刷新逻辑（在 refresh 函数中）
+// 原来 refresh 中 case 'prod': renderProdManage(curData.products || []); break;
+// 改为：
+// case 'prod': loadProductsPage(); break;
  
 function renderCategorySort() {
     const container = document.getElementById('cat-sort-list');
@@ -2111,6 +2211,23 @@ async function saveProd(btn) {
    [Fix-4] renderHireList 改用 DOM API 赋值，消除 HTML 注入风险
 ================================================================ */
  
+async function loadHireList() {
+    const container = document.getElementById('h-list-container');
+    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">加载中...</div>';
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/hiring`, { headers: getAuthHeaders() });
+        const data = await res.json();
+        if (data.success) {
+            curData.hiring = data.hiring;
+            renderHireList(data.hiring);
+        } else {
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--danger);">加载失败</div>';
+        }
+    } catch (e) {
+        container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--danger);">网络错误</div>';
+    }
+}
+ 
 function renderHireList(list) {
     const container = document.getElementById('h-list-container');
     container.innerHTML = '';
@@ -2188,43 +2305,79 @@ async function updHire(btn) {
    ⑬ 资金明细
 ================================================================ */
  
-async function loadBalanceLogs() {
+let fundCurrentPage = 1;
+let fundTotalPages = 1;
+const FUND_PER_PAGE = 30;
+async function loadBalanceLogs(page = 1) {
     const container = document.getElementById('fund-list');
     const uid = (document.getElementById('fund-user-search').value || '').trim();
-    const url = `${API_BASE}/api/admin/balance_logs${uid ? `?userId=${uid}` : ''}`;
- 
+    const params = new URLSearchParams({ page: page, limit: FUND_PER_PAGE });
+    if (uid) params.append('userId', uid);
+    const url = `${API_BASE}/api/admin/balance_logs?${params}`;
     container.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);"><div class="loader" style="border-top-color:var(--primary); margin-bottom:8px;"></div><br>拉取数据中...</td></tr>';
- 
     try {
-        const res  = await fetch(url, { headers: getAuthHeaders() });
-        const logs = await res.json();
-        if (!logs || logs.length === 0) {
-            container.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">暂无资金流水</td></tr>';
-            return;
+        const res = await fetch(url, { headers: getAuthHeaders() });
+        const data = await res.json();
+        if (data.success) {
+            fundCurrentPage = data.currentPage;
+            fundTotalPages = data.totalPages;
+            if (!data.logs || data.logs.length === 0) {
+                container.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">暂无资金流水</td></tr>';
+                return;
+            }
+            container.innerHTML = data.logs.map(log => {
+                const amount = parseFloat(log.amount);
+                const isPlus = amount > 0;
+                const color  = isPlus ? 'var(--success)' : 'var(--danger)';
+                const sign   = isPlus ? '+' : '';
+                return `
+                <tr>
+                    <td style="color:var(--text-muted); font-size:12px;">${new Date(log.created_at).toLocaleString()}</td>
+                    <td>
+                        <div style="font-weight:500;">${escapeHtml(log.contact || '未知')}</div>
+                        <div style="font-size:11px; color:var(--text-muted); font-family:monospace; margin-top:4px;">${escapeHtml(String(log.user_id))}</div>
+                    </td>
+                    <td><span class="tag" style="background:var(--bg-body); color:var(--text-secondary);">${escapeHtml(log.type)}</span></td>
+                    <td>
+                        <div style="color:${color}; font-weight:700; font-family:monospace;">${sign}${amount}</div>
+                        ${log.balance_after ? `<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">余: ${parseFloat(log.balance_after)}</div>` : ''}
+                    </td>
+                    <td style="color:var(--text-secondary); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+                        title="${escapeHtml(log.remark || '')}">${escapeHtml(log.remark || '')}</td>
+                </tr>`;
+            }).join('');
+            renderFundPagination();
+        } else {
+            container.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--danger);">加载失败</td></tr>';
         }
-        container.innerHTML = logs.map(log => {
-            const amount = parseFloat(log.amount);
-            const isPlus = amount > 0;
-            const color  = isPlus ? 'var(--success)' : 'var(--danger)';
-            const sign   = isPlus ? '+' : '';
-            return `
-            <tr>
-                <td style="color:var(--text-muted); font-size:12px;">${new Date(log.created_at).toLocaleString()}</td>
-                <td>
-                    <div style="font-weight:500;">${escapeHtml(log.contact || '未知')}</div>
-                    <div style="font-size:11px; color:var(--text-muted); font-family:monospace; margin-top:4px;">${escapeHtml(String(log.user_id))}</div>
-                </td>
-                <td><span class="tag" style="background:var(--bg-body); color:var(--text-secondary);">${escapeHtml(log.type)}</span></td>
-                <td>
-                    <div style="color:${color}; font-weight:700; font-family:monospace;">${sign}${amount}</div>
-                    ${log.balance_after ? `<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">余: ${parseFloat(log.balance_after)}</div>` : ''}
-                </td>
-                <td style="color:var(--text-secondary); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
-                    title="${escapeHtml(log.remark || '')}">${escapeHtml(log.remark || '')}</td>
-            </tr>`;
-        }).join('');
     } catch (e) {
-        container.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--danger);">数据加载失败</td></tr>';
+        container.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--danger);">网络错误</td></tr>';
+    }
+}
+function renderFundPagination() {
+    let paginationDiv = document.getElementById('fund-pagination');
+    if (!paginationDiv) {
+        const container = document.getElementById('fund-list').parentNode.parentNode;
+        paginationDiv = document.createElement('div');
+        paginationDiv.id = 'fund-pagination';
+        paginationDiv.className = 'pagination';
+        container.appendChild(paginationDiv);
+    }
+    if (fundTotalPages <= 1) {
+        paginationDiv.style.display = 'none';
+        return;
+    }
+    paginationDiv.style.display = 'flex';
+    paginationDiv.innerHTML = `
+        <button class="page-btn" onclick="changeFundPage(-1)" ${fundCurrentPage === 1 ? 'disabled' : ''}>上一页</button>
+        <span style="font-size:13px; color:var(--text-secondary);">${fundCurrentPage} / ${fundTotalPages}</span>
+        <button class="page-btn" onclick="changeFundPage(1)" ${fundCurrentPage === fundTotalPages ? 'disabled' : ''}>下一页</button>
+    `;
+}
+function changeFundPage(delta) {
+    const newPage = fundCurrentPage + delta;
+    if (newPage >= 1 && newPage <= fundTotalPages) {
+        loadBalanceLogs(newPage);
     }
 }
  
@@ -2386,80 +2539,105 @@ function renderImgPreviews() {
    重点修复：XSS、静音通知、状态同步、撤回按钮注入
 ================================================================ */
  
-/** 聊天来源 Tab 切换 */
-function setChatSourceFilter(el) {
-    document.querySelectorAll('#chat-source-filter-container .cat-tab').forEach(t => t.classList.remove('active'));
-    el.classList.add('active');
-    renderChats();
-}
- 
 /**
  * 渲染聊天会话列表
  * 原名 originalRenderChats，规范化命名
  */
-function renderChats() {
-    const uList  = document.getElementById('chat-users');
-    const chats  = curData.chats || {};
-    let sessionIds = Object.keys(chats).sort((a, b) => {
-        const ta = chats[a].length ? new Date(chats[a][chats[a].length - 1].created_at) : 0;
-        const tb = chats[b].length ? new Date(chats[b][chats[b].length - 1].created_at) : 0;
-        return tb - ta;
-    });
- 
-    // 来源筛选
-    const filterEl  = document.querySelector('#chat-source-filter-container .cat-tab.active');
-    const filterVal = filterEl ? filterEl.getAttribute('data-val') : 'all';
-    if (filterVal !== 'all') {
-        sessionIds = sessionIds.filter(sid => {
-            const source = _getSessionSource(sid, chats[sid] || []);
-            const isLg   = source.includes('8888');
-            return filterVal === 'longge' ? isLg : !isLg;
-        });
+let chatSessionsOffset = 0;
+const CHAT_SESSIONS_LIMIT = 20;
+let chatSessionsHasMore = true;
+let isLoadingSessions = false;
+async function loadChatSessions(reset = false) {
+    if (isLoadingSessions) return;
+    if (!reset && !chatSessionsHasMore) return;
+    isLoadingSessions = true;
+    if (reset) {
+        chatSessionsOffset = 0;
+        chatSessionsHasMore = true;
+        document.getElementById('chat-users').innerHTML = '';
     }
- 
-    if (sessionIds.length === 0) {
-        uList.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">暂无会话记录</div>';
+    try {
+        const sourceFilter = document.querySelector('#chat-source-filter-container .cat-tab.active')?.getAttribute('data-val') || 'all';
+        const params = new URLSearchParams({
+            limit: CHAT_SESSIONS_LIMIT,
+            offset: chatSessionsOffset,
+            source: sourceFilter
+        });
+        const res = await fetch(`${API_BASE}/api/admin/chat_sessions?${params}`, { headers: getAuthHeaders() });
+        const data = await res.json();
+        if (data.success) {
+            chatSessionsHasMore = data.hasMore;
+            chatSessionsOffset += data.sessions.length;
+            renderChatSessionItems(data.sessions, reset);
+        }
+    } catch (e) {
+        console.error('加载会话失败', e);
+    } finally {
+        isLoadingSessions = false;
+    }
+}
+function renderChatSessionItems(sessions, reset) {
+    const container = document.getElementById('chat-users');
+    if (reset) container.innerHTML = '';
+    if (sessions.length === 0 && reset) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">暂无会话</div>';
         return;
     }
- 
-    uList.innerHTML = sessionIds.map(sid => {
-        const messages    = chats[sid] || [];
-        const lastMsg     = messages.length > 0 ? messages[messages.length - 1] : { content: '...', created_at: new Date() };
-        const unreadCount = messages.filter(m => m.sender === 'user' && !m.is_read).length;
-        const timeStr     = new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const isHR        = sid.startsWith('hr_');
-        const rawUid      = _getRawUid(sid);
-        const source      = _getSessionSource(sid, messages);
-        const isMuted     = (curData.mutedSessions || []).includes(sid);
- 
-        const bossName  = source.includes('8888') ? '龍哥' : 'Boss';
+      const html = sessions.map(s => {
+        const isMuted = (curData.mutedSessions || []).includes(s.session_id);
+        const timeStr = new Date(s.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const source = s.source || '';
+        const bossName = source.includes('8888') ? '龍哥' : 'Boss';
         const bossColor = source.includes('8888') ? '#d97706' : '#4f46e5';
-        const bossBg    = source.includes('8888') ? '#fef3c7' : '#e0e7ff';
-        const bossTag   = `<span class="tag" style="background:${bossBg}; color:${bossColor}; padding:0 4px; font-size:10px; margin-right:4px;">${bossName}</span>`;
-        const typeTag   = isHR
+         const bossBg = source.includes('8888') ? '#fef3c7' : '#e0e7ff';
+        const bossTag = `<span class="tag" style="background:${bossBg}; color:${bossColor}; padding:0 4px; font-size:10px; margin-right:4px;">${bossName}</span>`;
+        const typeTag = s.session_id.startsWith('hr_')
             ? '<span class="tag" style="background:#ecfdf5; color:#059669; padding:0 4px; font-size:10px; margin-right:4px;">直聘</span>'
             : '<span class="tag" style="background:#f3f4f6; color:#4b5563; padding:0 4px; font-size:10px; margin-right:4px;">客服</span>';
- 
+      let previewContent = '暂无消息';
+        const msgText = s.last_message_preview || s.content || s.last_message || '';
+        if (msgText) {
+            previewContent = s.msg_type === 'image' ? '[图片]' : msgText;
+        }
         return `
-        <div class="chat-item ${curChat === sid ? 'active' : ''}"
-             data-sid="${escapeHtml(sid)}"
-             onclick="openChat('${escapeHtml(sid)}')">
+        <div class="chat-item ${curChat === s.session_id ? 'active' : ''}"
+             data-sid="${escapeHtml(s.session_id)}"
+             onclick="openChat('${escapeHtml(s.session_id)}')">
             <div class="chat-avatar" style="position:relative;">
-                ${escapeHtml(rawUid.slice(-2))}
+                ${escapeHtml(s.display_uid.slice(-2))}
                 ${isMuted ? '<div style="position:absolute; bottom:-2px; right:-2px; background:var(--bg-card); border-radius:50%; width:16px; height:16px; display:flex; align-items:center; justify-content:center; color:var(--danger); box-shadow:var(--shadow-sm);"><i class="ri-notification-off-fill" style="font-size:10px;"></i></div>' : ''}
             </div>
             <div class="chat-info">
                 <div class="chat-top">
-                    <span class="chat-name">${bossTag}${typeTag}UID: ${escapeHtml(rawUid)}</span>
+                    <span class="chat-name">${bossTag}${typeTag}UID: ${escapeHtml(s.display_uid)}</span>
                     <span class="chat-time">${timeStr}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span class="chat-preview">${escapeHtml(lastMsg.content)}</span>
-                    ${unreadCount > 0 ? `<span class="nav-badge" style="display:inline-block;">${unreadCount}</span>` : ''}
+                    <span class="chat-preview">${escapeHtml(previewContent)}</span>
+                    ${s.unread_count > 0 ? `<span class="nav-badge" style="display:inline-block;">${s.unread_count}</span>` : ''}
                 </div>
             </div>
         </div>`;
     }).join('');
+    container.insertAdjacentHTML('beforeend', html);
+    if (!reset && sessions.length > 0) {
+        const sentinel = document.createElement('div');
+        sentinel.id = 'chat-sentinel';
+        sentinel.style.height = '1px';
+        container.appendChild(sentinel);
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting && chatSessionsHasMore && !isLoadingSessions) {
+                observer.disconnect();
+                loadChatSessions();
+            }
+        }, { root: container, threshold: 0.1 });
+        observer.observe(sentinel);
+    }
+}
+function setChatSourceFilter(el) {
+    document.querySelectorAll('#chat-source-filter-container .cat-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    loadChatSessions(true);
 }
  
 /**
@@ -2506,22 +2684,149 @@ function openChatPanel(sid) {
         <div style="font-size:12px; color:var(--success); margin-top:2px;">${escapeHtml(typeStr)}</div>
     </div>`;
  
-    setTimeout(async () => {
-        // 标记已读（本地）
-        if ((curData.chats || {})[sid]) {
-            curData.chats[sid].forEach(m => { if (m.sender === 'user') m.is_read = true; });
-        }
-        renderChats();
-        updateBadge();
-        renderMessages(sid);
-     
-        // 标记已读（服务端）
-        try {
-            await fetch(`${API_BASE}/api/admin/chat/read`, {
-                method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: sid }),
-            });
-        } catch (e) { /* 非关键路径，静默处理 */ }
-    }, 50);
+setTimeout(async () => {
+    if ((curData.chats || {})[sid]) {
+        curData.chats[sid].forEach(m => { if (m.sender === 'user') m.is_read = true; });
+    }
+    loadChatSessions(true);
+    updateBadge();
+    await loadChatMessages(sid, 20, 0);
+        
+        // 标记已读（服务端）
+        try {
+            await fetch(`${API_BASE}/api/admin/chat/read`, {
+                method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: sid }),
+            });
+        } catch (e) { /* 非关键路径，静默处理 */ }
+    }, 50);
+}
+
+// 新增按需加载消息函数
+let chatMessageCache = {}; // { sessionId: { messages: [], hasMore: true, offset: 0 } }
+
+async function loadChatMessages(sessionId, limit = 20, offset = 0, append = false) {
+    const box = document.getElementById('chat-box');
+    if (!append) {
+        box.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);"><div class="loader"></div> 加载消息中...</div>';
+    }
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/chat/messages/${sessionId}?limit=${limit}&offset=${offset}`, {
+            headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (!chatMessageCache[sessionId]) {
+                chatMessageCache[sessionId] = { messages: [], hasMore: data.hasMore, offset: offset + data.messages.length };
+            } else {
+                chatMessageCache[sessionId].hasMore = data.hasMore;
+                chatMessageCache[sessionId].offset = offset + data.messages.length;
+            }
+                       if (append) {
+                appendChatMessages(data.messages, true);
+            } else {
+                renderChatMessagesFromData(data.messages, sessionId);
+                chatMessageCache[sessionId].messages = data.messages;
+                setupChatScrollLoad(sessionId);
+            }
+        } else {
+            box.innerHTML = '<div style="text-align:center; padding:20px; color:var(--danger);">加载失败</div>';
+        }
+        } catch (e) {
+        if (!append) {
+            box.innerHTML = '<div style="text-align:center; padding:20px; color:var(--danger);">网络错误，请稍后重试</div>';
+        } else {
+            // 追加模式失败时，回滚 offset 防止后续无限重试
+            if (chatMessageCache[sessionId]) {
+                chatMessageCache[sessionId].offset = Math.max(0, (chatMessageCache[sessionId].offset || 0) - limit);
+            }
+            showNotification('加载失败', '历史消息加载失败', 'danger');
+        }
+    }
+}
+
+function renderChatMessagesFromData(messages, sessionId) {
+    const box = document.getElementById('chat-box');
+    box.innerHTML = messages.map(m => {
+        const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const isMe = m.sender === 'admin';
+        const readStatus = isMe ? (m.is_read ? '<span style="color:var(--success); margin-right:8px;">已读</span>' : '<span style="color:var(--text-muted); margin-right:8px;">未读</span>') : '';
+        if (m.msg_type === 'system') {
+            return `<div style="text-align:center; font-size:11px; color:var(--text-muted); margin:8px 0;">${escapeHtml(m.content)}</div>`;
+        }
+        const isImage = m.msg_type === 'image' || (typeof m.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(m.content)) || (typeof m.content === 'string' && m.content.includes('cloudinary.com'));
+        let contentHtml;
+        if (isImage) {
+            const safeUrl = escapeHtml(m.content);
+            contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="window.open('${safeUrl}')">`;
+        } else {
+            contentHtml = escapeHtml(m.content);
+        }
+        const recallBtn = isMe ? `<span onclick="recallMsg(${m.id}, '${escapeHtml(sessionId)}')" style="cursor:pointer; color:var(--danger); margin-right:8px;"><i class="ri-arrow-go-back-line"></i> 撤回</span>` : '';
+        return `
+        <div class="msg-row ${isMe ? 'admin' : 'user'}">
+            <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
+                <div class="msg-bubble" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
+                <div class="msg-time">${recallBtn}${readStatus}${time}</div>
+            </div>
+        </div>`;
+    }).join('');
+    
+    // 确保立刻滚动，并增加延时补偿图片加载撑开的高度
+    box.scrollTop = box.scrollHeight;
+    setTimeout(() => { box.scrollTop = box.scrollHeight; }, 150);
+    setTimeout(() => { box.scrollTop = box.scrollHeight; }, 500);
+    
+    // 监听所有加载中的图片，一旦加载完成再次滚动到底部
+    box.querySelectorAll('img').forEach(img => {
+        img.onload = () => { box.scrollTop = box.scrollHeight; };
+    });
+}
+
+function appendChatMessages(messages, prepend = false) {
+    const box = document.getElementById('chat-box');
+    const fragment = document.createDocumentFragment();
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = messages.map(m => {
+        const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const isMe = m.sender === 'admin';
+        if (m.msg_type === 'system') {
+            return `<div style="text-align:center; font-size:11px; color:var(--text-muted); margin:8px 0;">${escapeHtml(m.content)}</div>`;
+        }
+        const isImage = m.msg_type === 'image' || (typeof m.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(m.content)) || (typeof m.content === 'string' && m.content.includes('cloudinary.com'));
+        let contentHtml;
+        if (isImage) {
+            const safeUrl = escapeHtml(m.content);
+            contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="window.open('${safeUrl}')">`;
+        } else {
+            contentHtml = escapeHtml(m.content);
+        }
+        return `
+        <div class="msg-row ${isMe ? 'admin' : 'user'}">
+            <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
+                <div class="msg-bubble" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
+                <div class="msg-time">${time}</div>
+            </div>
+        </div>`;
+    }).join('');
+    while (tempDiv.firstChild) fragment.appendChild(tempDiv.firstChild);
+    if (prepend) {
+        const oldScrollHeight = box.scrollHeight;
+        box.insertBefore(fragment, box.firstChild);
+        box.scrollTop = box.scrollHeight - oldScrollHeight;
+    } else {
+        box.appendChild(fragment);
+        box.scrollTop = box.scrollHeight;
+    }
+}
+
+function setupChatScrollLoad(sessionId) {
+    const box = document.getElementById('chat-box');
+    box.onscroll = debounce(() => {
+        if (box.scrollTop === 0 && chatMessageCache[sessionId]?.hasMore) {
+            const cache = chatMessageCache[sessionId];
+            loadChatMessages(sessionId, 20, cache.offset, true);
+        }
+    }, 200);
 }
  
 function openChat(sid) { openChatPanel(sid); history.pushState({ chat: sid }, null, ''); }
@@ -2572,7 +2877,7 @@ function renderMessages(sid) {
             : '';
 
         return `
-        <div class="msg-row ${isMe ? 'admin' : 'user'}">
+        <div class="msg-row ${isMe ? 'admin' : 'user'}" id="msg-row-${m.id}">
             <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
                 <div class="msg-bubble" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
                 <div class="msg-time">${recallBtn}${readStatus}${time}</div>
@@ -2584,35 +2889,55 @@ function renderMessages(sid) {
 }
  
 /** 发送回复 */
-async function reply(btn) {
-    if (!curChat) { showNotification('提示', '请先选择会话', 'warning'); return; }
-    const input = document.getElementById('reply-in');
-    const t = input.value.trim();
-    if (!t) return;
+/** 发送回复 */
+    async function reply(btn) {
+        if (!curChat) { showNotification('提示', '请先选择会话', 'warning'); return; }
+        const input = document.getElementById('reply-in');
+        const t = input.value.trim();
+        if (!t) return;
 
-    btn.disabled = true; btn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
-    try {
-        await fetch(`${API_BASE}/api/admin/reply`, {
-            method: 'POST', headers: getAuthHeaders(),
-            body: JSON.stringify({ sessionId: curChat, text: t }),
-        });
+        const sendBtn = document.getElementById('chat-send-btn');
+        sendBtn.disabled = true; 
+        sendBtn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
+        
         input.value = '';
-        await refresh(true); 
-    } catch (e) { showNotification('错误', '发送失败', 'danger'); }
-    finally { 
-        btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>'; 
-        input.focus();
+
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/reply`, {
+                method: 'POST', headers: getAuthHeaders(),
+                body: JSON.stringify({ sessionId: curChat, text: t }),
+            });
+            const d = await res.json();
+            
+            if (d.success) {
+                if (d.message || d.data) {
+                    const newMsg = d.message || d.data;
+                    appendChatMessages([newMsg], false);
+                    updateChatItemPreview(curChat, newMsg);
+                    setTimeout(() => { document.getElementById('chat-box').scrollTop = document.getElementById('chat-box').scrollHeight; }, 100);
+                }
+            } else {
+                showNotification('错误', d.msg || '发送失败', 'danger');
+                input.value = t; 
+            }
+        } catch (e) { 
+            showNotification('错误', '发送失败', 'danger'); 
+            input.value = t;
+        }
+        finally { 
+            sendBtn.disabled = false; 
+            sendBtn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>'; 
+            input.focus();
+        }
     }
-}
 
 async function sendDirectReply(text) {
     if (!curChat) return;
     try {
-        await fetch(`${API_BASE}/api/admin/reply`, {
+                await fetch(`${API_BASE}/api/admin/reply`, {
             method: 'POST', headers: getAuthHeaders(),
             body: JSON.stringify({ sessionId: curChat, text }),
         });
-        await refresh(true);
     } catch (e) { showNotification('错误', '发送失败', 'danger'); }
 }
 
@@ -2632,13 +2957,12 @@ async function sendAdminChatImage(input) {
             method: 'POST', headers: { 'Authorization': adminToken }, body: formData,
         });
         const d = await res.json();
-        if (d.success) {
-            await fetch(`${API_BASE}/api/admin/reply`, {
-                method: 'POST', headers: getAuthHeaders(),
-                body: JSON.stringify({ sessionId: curChat, text: d.url, msgType: 'image' }),
-            });
-            await refresh(true);
-        } else { showNotification('错误', d.error || '上传失败', 'danger'); }
+                    if (d.success) {
+                await fetch(`${API_BASE}/api/admin/reply`, {
+                    method: 'POST', headers: getAuthHeaders(),
+                    body: JSON.stringify({ sessionId: curChat, text: d.url, msgType: 'image' }),
+                });
+            } else { showNotification('错误', d.error || '上传失败', 'danger'); }
     } catch (e) { showNotification('错误', '网络故障', 'danger'); }
     finally {
         input.value = '';
@@ -2660,7 +2984,7 @@ async function recallMsg(msgId, sessionId) {
                 const msg = curData.chats[sessionId].find(m => m.id == msgId);
                 if (msg) { msg.content = '此消息已撤回'; msg.msg_type = 'system'; }
                 if (curChat === sessionId) renderMessages(sessionId);
-                renderChats();
+                loadChatSessions(true);
             }
         } else showNotification('失败', d.msg || '撤回失败', 'warning');
     } catch (e) { showNotification('错误', '网络异常', 'danger'); }
@@ -2683,7 +3007,7 @@ async function clearChatHistory(sid) {
                 showNotification('成功', '记录已清空', 'success');
                 if (curData.chats && curData.chats[sid]) curData.chats[sid] = [];
                 renderMessages(sid);
-                renderChats();
+                loadChatSessions(true);
             }
         } catch (e) { showNotification('错误', '清空失败', 'danger'); }
     }
@@ -2720,7 +3044,7 @@ async function toggleMuteChat(btn) {
  
     btn.style.transform  = 'scale(0.8)';
     setTimeout(() => { btn.style.transform = 'scale(1)'; btn.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)'; }, 50);
-    renderChats();
+    loadChatSessions(true);
  
     try {
         const res = await fetch(`${API_BASE}/api/admin/chat/toggle_mute`, {
@@ -2729,7 +3053,6 @@ async function toggleMuteChat(btn) {
         const d = await res.json();
         if (!d.success) throw new Error('Sync failed');
     } catch (e) {
-        // 回滚本地状态
         if (isMutedNow) {
             if (!curData.mutedSessions.includes(sid)) curData.mutedSessions.push(sid);
         } else {
@@ -2737,7 +3060,7 @@ async function toggleMuteChat(btn) {
         }
         localStorage.setItem('adminMutedSessions', JSON.stringify(curData.mutedSessions));
         openChatPanel(sid);
-        renderChats();
+        loadChatSessions(true);
         showNotification('错误', '网络异常，状态未保存', 'danger');
     }
 }
@@ -2745,11 +3068,10 @@ async function toggleMuteChat(btn) {
 /** 更新聊天未读角标 */
 function updateBadge() {
     let totalUnread = 0;
-    if (curData.chats) {
-        Object.values(curData.chats).forEach(msgs => {
-            totalUnread += msgs.filter(m => m.sender === 'user' && !m.is_read).length;
-        });
-    }
+    document.querySelectorAll('.chat-item .nav-badge').forEach(badge => {
+        const count = parseInt(badge.innerText) || 0;
+        totalUnread += count;
+    });
     const badge = document.getElementById('chat-badge-total');
     if (totalUnread > 0) {
         badge.style.display = 'inline-block';
@@ -2770,7 +3092,6 @@ function closeChatMobile() {
     if (window.innerWidth <= 768) {
         document.body.style.overflow = '';
     }
-    setTimeout(() => { renderChats(); }, 300);
 }
  
 /* ================================================================
@@ -2800,18 +3121,58 @@ function _getSessionSource(sid, messages) {
 ================================================================ */
  
 if (adminToken) {
-    refresh();
-    socket.emit('join', { isAdmin: true, token: adminToken });
+    refresh();
+    socket.emit('join', { isAdmin: true, token: adminToken });
 }
- 
-socket.on('admin_update',  () => refresh());  
-socket.on('order_update',  () => refresh());
-socket.on('global_update', () => refresh());
+ 
+socket.on('admin_update', (data) => {
+    const activePage = document.querySelector('.page.active');
+    if (data.type === 'order' || data.type === 'user' || data.type === 'funds') {
+        if (activePage) {
+            const checkedIds = Array.from(document.querySelectorAll('.prod-checkbox:checked, .hot-prod-checkbox:checked')).map(cb => cb.value);
+            if (activePage.id === 'order') {
+                loadOrdersPage(orderCurrentPage).then(() => {
+                    checkedIds.forEach(id => { const cb = document.querySelector(`.prod-checkbox[value="${id}"]`); if(cb) cb.checked = true; });
+                });
+            }
+            else if (activePage.id === 'users') loadUsersPage(userCurrentPage);
+            else if (activePage.id === 'funds') loadBalanceLogs(fundCurrentPage);
+            else if (activePage.id === 'dash') refresh(true);
+        }
+    } else {
+        refresh(true);
+    }
+});
+socket.on('order_update', () => {
+    const activePage = document.querySelector('.page.active');
+    if (activePage && activePage.id === 'order') {
+        loadOrdersPage(orderCurrentPage);
+    } else if (activePage && activePage.id === 'dash') {
+        refresh(true);
+    }
+});
+socket.on('global_update', () => {
+    const activePage = document.querySelector('.page.active');
+    if (activePage && activePage.id === 'prod') {
+        loadProductsPage(currentProductPage, currentProductCategoryFilter);
+    } else if (activePage && activePage.id === 'hire') {
+        loadHireList();
+    } else {
+        refresh(true);
+    }
+});
  
 socket.on('admin_chat_read', (data) => {
     if (curData.chats && curData.chats[data.sessionId]) {
         curData.chats[data.sessionId].forEach(m => { if (m.sender === 'user') m.is_read = true; });
-        renderChats();
+        const chatItem = document.querySelector(`.chat-item[data-sid="${data.sessionId}"]`);
+        if (chatItem) {
+            const badge = chatItem.querySelector('.nav-badge');
+            if (badge) {
+                badge.innerText = '0';
+                badge.style.display = 'none';
+            }
+        }
         updateBadge();
     }
 });
@@ -2819,7 +3180,16 @@ socket.on('admin_chat_read', (data) => {
 socket.on('user_chat_read', (data) => {
     if (curData.chats && curData.chats[data.sessionId]) {
         curData.chats[data.sessionId].forEach(m => { if (m.sender === 'admin') m.is_read = true; });
-        if (curChat === data.sessionId) renderMessages(data.sessionId);
+        if (curChat === data.sessionId) {
+            const box = document.getElementById('chat-box');
+            const timeElements = box.querySelectorAll('.msg-time span');
+            timeElements.forEach(span => {
+                if (span.innerText === '未读') {
+                    span.innerText = '已读';
+                    span.style.color = 'var(--success)';
+                }
+            });
+        }
     }
 });
 
@@ -2827,91 +3197,137 @@ socket.on('message_recalled', (data) => {
     if (curData.chats && curData.chats[data.sessionId]) {
         const msg = curData.chats[data.sessionId].find(m => m.id == data.messageId);
         if (msg) { msg.content = '此消息已被客服撤回'; msg.msg_type = 'system'; }
-        if (curChat === data.sessionId) renderMessages(data.sessionId);
-        renderChats();
+        if (curChat === data.sessionId) {
+            const targetRow = document.getElementById(`msg-row-${data.messageId}`);
+            if (targetRow) {
+                targetRow.innerHTML = `<div style="text-align:center; font-size:11px; color:var(--text-muted); margin:8px 0; width: 100%;">此消息已被客服撤回</div>`;
+                targetRow.className = '';
+            }
+        }
+        updateChatItemPreview(data.sessionId, { content: '此消息已被客服撤回', msg_type: 'system', created_at: new Date().toISOString() });
     }
 });
  
 socket.on('new_message', (data) => {
-    if (!curData.chats) curData.chats = {};
-    if (!curData.chats[data.session_id]) curData.chats[data.session_id] = [];
- 
-    // 去重：防止 refresh() 与 socket 事件竞争重复追加，修复数据类型不同导致的强等于校验失败
-    if (curData.chats[data.session_id].some(m => m.id == data.id)) return;
-    curData.chats[data.session_id].push(data);
- 
+    // 更新内存缓存（用于会话列表预览）
+    if (!curData.chats) curData.chats = {};
+    if (!curData.chats[data.session_id]) curData.chats[data.session_id] = [];
+    if (!curData.chats[data.session_id].some(m => m.id == data.id)) {
+        curData.chats[data.session_id].push(data);
+    }
+if (chatMessageCache[data.session_id] && chatMessageCache[data.session_id].messages) {
+        if (!chatMessageCache[data.session_id].messages.some(m => m.id == data.id)) {
+            chatMessageCache[data.session_id].messages.push(data);
+            chatMessageCache[data.session_id].offset += 1;
+        }
+    }
+
     const isChatPageActive = document.getElementById('chat').classList.contains('active');
- 
-    if (isChatPageActive && curChat === data.session_id) {
-        // 当前会话：直接追加气泡（高性能，无需全量 re-render）
-        const box     = document.getElementById('chat-box');
-        const time    = new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const isMe    = data.sender === 'admin';
-        const isImage = data.msg_type === 'image'
-            || (typeof data.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(data.content))
-            || (typeof data.content === 'string' && data.content.includes('cloudinary.com'));
- 
-        let contentHtml;
-        if (data.msg_type === 'system') {
-            const sysDiv = document.createElement('div');
-            sysDiv.style.cssText = 'text-align:center; font-size:11px; color:var(--text-muted); margin:8px 0;';
-            sysDiv.textContent = data.content;
-            box.appendChild(sysDiv); box.scrollTop = box.scrollHeight; return;
-        }
-        if (isImage) {
-            // [Fix-1] 转义 URL
-            const safeUrl = escapeHtml(data.content);
-            contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="window.open('${safeUrl}')">`;
-        } else {
-            contentHtml = escapeHtml(data.content);
-        }
- 
-        // [Fix-3] 撤回按钮用 data 属性
-        const div = document.createElement('div');
-        div.className = `msg-row ${isMe ? 'admin' : 'user'}`;
-        div.innerHTML = `
-            <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
-                <div class="msg-bubble" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
-                <div class="msg-time">
-                    ${isMe ? `<span onclick="recallMsg(${data.id}, '${escapeHtml(data.session_id)}')"
-                                    style="cursor:pointer; color:var(--danger); margin-right:8px;">
-                                <i class="ri-arrow-go-back-line"></i> 撤回
-                              </span>` : ''}
-                    ${time}
-                </div>
-            </div>`;
 
-        box.appendChild(div); box.scrollTop = box.scrollHeight;
-
+  // 如果当前正好打开该会话，直接追加消息，不重新渲染全部
+        if (isChatPageActive && curChat === data.session_id) {
+             // 直接追加到聊天框（不重新拉取）
+            const box = document.getElementById('chat-box');
+            const time = new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const isMe = data.sender === 'admin';
+            if (data.msg_type === 'system') {
+                const sysDiv = document.createElement('div');
+                sysDiv.style.cssText = 'text-align:center; font-size:11px; color:var(--text-muted); margin:8px 0;';
+                sysDiv.textContent = data.content || '';
+                box.appendChild(sysDiv);
+                box.scrollTop = box.scrollHeight;
+            } else {
+                const isImage = data.msg_type === 'image' || (typeof data.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(data.content)) || (typeof data.content === 'string' && data.content.includes('cloudinary.com'));
+                let contentHtml;
+                if (isImage) {
+                    const safeUrl = escapeHtml(data.content);
+                    contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="window.open('${safeUrl}')">`;
+                } else {
+                    contentHtml = escapeHtml(data.content || '');
+                }
+                const div = document.createElement('div');
+                div.className = `msg-row ${isMe ? 'admin' : 'user'}`;
+                div.innerHTML = `
+                <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
+                    <div class="msg-bubble" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
+                    <div class="msg-time">
+                        ${isMe ? `<span onclick="recallMsg(${data.id}, '${escapeHtml(data.session_id)}')" style="cursor:pointer; color:var(--danger); margin-right:8px;"><i class="ri-arrow-go-back-line"></i> 撤回</span><span style="color:var(--text-muted); margin-right:8px;">未读</span>` : ''}
+                        ${time}
+                    </div>
+                </div>`;
+                box.appendChild(div);
+                box.scrollTop = box.scrollHeight;
+            }
+            // 标记已读（若为用户消息）
             if (!isMe) {
                 fetch(`${API_BASE}/api/admin/chat/read`, {
                     method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: data.session_id }),
                 }).catch(() => {});
             }
-            renderChats();
+            // 无论谁发的消息，都更新会话列表中的预览
+            updateChatItemPreview(data.session_id, data);
+            updateBadge();
+            return; // 关键：不再执行后续的 loadChatSessions 全量刷新
+        }
+
+       // 非当前会话，更新会话列表（渲染预览、增加红点）
+        const chatItemExists = document.querySelector(`.chat-item[data-sid="${data.session_id}"]`);
+        if (chatItemExists) {
+            updateChatItemPreview(data.session_id, data);
+            if (data.sender === 'user') {
+                let badge = chatItemExists.querySelector('.nav-badge');
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'nav-badge';
+                    badge.style.display = 'inline-block';
+                    badge.innerText = '0';
+                    const previewContainer = chatItemExists.querySelector('.chat-info > div:nth-child(2)');
+                    if (previewContainer) previewContainer.appendChild(badge);
+                }
+                badge.innerText = parseInt(badge.innerText || 0) + 1;
+                badge.style.display = 'inline-block';
+            }
         } else {
+            if (!chatItemExists) {
+                loadChatSessions(true);
+            }
+        }
+        updateBadge();
+
+        // 发送通知（仅用户消息，只要不是正在跟该用户聊天就弹窗，无视静音设置）
+        if (data.sender === 'user' && curChat !== data.session_id) {
             let rawUid = data.session_id.replace('hr_', '').replace('user_', '').replace('guest_', '访客_');
             let source = data.source || '';
             const userObj = (curData.users || []).find(u => String(u.id) === String(rawUid));
             if (userObj && userObj.source) source = String(userObj.source);
-            
             const bossName = String(source).includes('8888') ? '龍哥' : 'Boss';
-            const isHR     = data.session_id.startsWith('hr_');
-            const typeStr  = isHR ? '直聘咨询' : '商城咨询';
-            
-            if (data.sender === 'user') {
-                showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info', () => {
-                    nav('chat');
-                    setTimeout(() => {
-                        const chatItem = document.querySelector(`.chat-item[data-sid="${data.session_id}"]`);
-                        if (chatItem) chatItem.click();
-                    }, 300);
-                });
-            }
-            renderChats();
+            const isHR = data.session_id.startsWith('hr_');
+            const typeStr = isHR ? '直聘咨询' : '商城咨询';
+            showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info', () => {
+                nav('chat');
+                setTimeout(() => {
+                    const chatItem = document.querySelector(`.chat-item[data-sid="${data.session_id}"]`);
+                    if (chatItem) chatItem.click();
+                }, 300);
+            });
         }
-        updateBadge();
-    });
+});
+
+// 新增局部更新会话列表项预览
+function updateChatItemPreview(sessionId, lastMessage) {
+    const chatItem = document.querySelector(`.chat-item[data-sid="${sessionId}"]`);
+    if (!chatItem) return;
+    const previewSpan = chatItem.querySelector('.chat-preview');
+    const timeSpan = chatItem.querySelector('.chat-time');
+    if (previewSpan) {
+        const isImage = lastMessage.msg_type === 'image' || (typeof lastMessage.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(lastMessage.content)) || (typeof lastMessage.content === 'string' && lastMessage.content.includes('cloudinary.com'));
+        previewSpan.textContent = isImage ? '[图片]' : lastMessage.content;
+    }
+    if (timeSpan) timeSpan.textContent = new Date(lastMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // 重新排序（移到顶部）
+    const parent = chatItem.parentNode;
+    parent.insertBefore(chatItem, parent.firstChild);
+}
  
 /* ================================================================
    ⑲ 键盘快捷键 & 路由
