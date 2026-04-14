@@ -2707,14 +2707,21 @@ function openChatPanel(sid) {
     </div>`;
  
 setTimeout(async () => {
-    if ((curData.chats || {})[sid]) {
-        curData.chats[sid].forEach(m => { if (m.sender === 'user') m.is_read = true; });
-    }
-    loadChatSessions(true);
-    updateBadge();
-    await loadChatMessages(sid, 20, 0);
-        
-        // 标记已读（服务端）
+                if ((curData.chats || {})[sid]) {
+                    curData.chats[sid].forEach(m => { if (m.sender === 'user') m.is_read = true; });
+                }
+                const activeChatItem = document.querySelector(`.chat-item[data-sid="${sid}"]`);
+                if (activeChatItem) {
+                    const badge = activeChatItem.querySelector('.nav-badge');
+                    if (badge) {
+                        badge.innerText = '0';
+                        badge.style.display = 'none';
+                    }
+                }
+                updateBadge();
+                await loadChatMessages(sid, 20, 0);
+                    
+                    // 标记已读（服务端）
         try {
             await fetch(`${API_BASE}/api/admin/chat/read`, {
                 method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: sid }),
@@ -3061,14 +3068,23 @@ async function toggleMuteChat(btn) {
         showNotification('已恢复', '此会话通知已开启', 'success');
     }
  
-    localStorage.setItem('adminMutedSessions', JSON.stringify(curData.mutedSessions));
- 
-    btn.style.transform  = 'scale(0.8)';
-    setTimeout(() => { btn.style.transform = 'scale(1)'; btn.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)'; }, 50);
-    loadChatSessions(true);
- 
-    try {
-        const res = await fetch(`${API_BASE}/api/admin/chat/toggle_mute`, {
+   localStorage.setItem('adminMutedSessions', JSON.stringify(curData.mutedSessions));
+
+                btn.style.transform  = 'scale(0.8)';
+                setTimeout(() => { btn.style.transform = 'scale(1)'; btn.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)'; }, 50);
+                
+                const chatAvatar = document.querySelector(`.chat-item[data-sid="${sid}"] .chat-avatar`);
+                if (chatAvatar) {
+                    if (!isMutedNow) {
+                        chatAvatar.insertAdjacentHTML('beforeend', '<div class="mute-icon-layer" style="position:absolute; bottom:-2px; right:-2px; background:var(--bg-card); border-radius:50%; width:16px; height:16px; display:flex; align-items:center; justify-content:center; color:var(--danger); box-shadow:var(--shadow-sm);"><i class="ri-notification-off-fill" style="font-size:10px;"></i></div>');
+                    } else {
+                        const existingIcon = chatAvatar.querySelector('div[style*="position:absolute"]');
+                        if (existingIcon) existingIcon.remove();
+                    }
+                }
+
+                try {
+                    const res = await fetch(`${API_BASE}/api/admin/chat/toggle_mute`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: sid }),
         });
         const d = await res.json();
@@ -3313,18 +3329,19 @@ if (chatMessageCache[data.session_id] && chatMessageCache[data.session_id].messa
             const container = document.getElementById('chat-users');
             const emptyTip = container.querySelector('div[style*="text-align:center"]');
             if (emptyTip) container.innerHTML = '';
-            renderChatSessionItems([{
-                session_id: data.session_id,
-                display_uid: data.session_id.replace('hr_', '').replace('user_', ''),
-                last_message_preview: data.content,
-                msg_type: data.msg_type,
-                last_message_time: data.created_at,
-                sender: data.sender,
-                source: data.source,
-                unread_count: 1
-            }], false);
-        }
-        updateBadge();
+           renderChatSessionItems([{
+                        session_id: data.session_id,
+                        display_uid: data.session_id.replace('hr_', '').replace('user_', ''),
+                        last_message_preview: data.content,
+                        msg_type: data.msg_type,
+                        last_message_time: data.created_at,
+                        sender: data.sender,
+                        source: data.source,
+                        unread_count: 1
+                    }], false);
+                    updateChatItemPreview(data.session_id, data);
+                }
+                updateBadge();
 
         // 发送通知（仅用户消息，只要不是正在跟该用户聊天就弹窗，无视静音设置）
         if (data.sender === 'user' && curChat !== data.session_id) {
