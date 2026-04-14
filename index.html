@@ -1123,10 +1123,11 @@ function showQuickReplies() {
     }
     let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
     replies.forEach(r => {
-        html += `<button class="btn-secondary" style="text-align:left; padding:10px; white-space:normal; height:auto; line-height:1.4;" onclick="document.getElementById('reply-in').value='${escapeHtml(r)}'; Swal.close();">${escapeHtml(r)}</button>`;
+        // 使用 sendDirectReply 函数直接发送，内容需转义
+        const escapedReply = escapeHtml(r);
+        html += `<button class="btn-secondary" style="text-align:left; padding:10px; white-space:normal; height:auto; line-height:1.4;" onclick="sendDirectReply('${escapedReply}'); Swal.close();">${escapedReply}</button>`;
     });
     html += '</div>';
-
     Swal.fire({
         title: '快捷回复',
         html: html,
@@ -2688,18 +2689,24 @@ setTimeout(async () => {
     if ((curData.chats || {})[sid]) {
         curData.chats[sid].forEach(m => { if (m.sender === 'user') m.is_read = true; });
     }
-    loadChatSessions(true);
+    // 仅更新会话列表的活跃状态，不重新加载整个列表
+    document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
+    const activeItem = document.querySelector(`.chat-item[data-sid="${sid}"]`);
+    if (activeItem) activeItem.classList.add('active');
+    // 清除该会话的未读角标
+    const badge = activeItem ? activeItem.querySelector('.nav-badge') : null;
+    if (badge) {
+        badge.innerText = '0';
+        badge.style.display = 'none';
+    }
     updateBadge();
     await loadChatMessages(sid, 20, 0);
-        
-        // 标记已读（服务端）
-        try {
-            await fetch(`${API_BASE}/api/admin/chat/read`, {
-                method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: sid }),
-            });
-        } catch (e) { /* 非关键路径，静默处理 */ }
-    }, 50);
-}
+    try {
+        await fetch(`${API_BASE}/api/admin/chat/read`, {
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: sid }),
+        });
+    } catch (e) { }
+}, 50);
 
 // 新增按需加载消息函数
 let chatMessageCache = {}; // { sessionId: { messages: [], hasMore: true, offset: 0 } }
@@ -2891,45 +2898,41 @@ function renderMessages(sid) {
 /** 发送回复 */
 /** 发送回复 */
     async function reply(btn) {
-        if (!curChat) { showNotification('提示', '请先选择会话', 'warning'); return; }
-        const input = document.getElementById('reply-in');
-        const t = input.value.trim();
-        if (!t) return;
-
-        const sendBtn = document.getElementById('chat-send-btn');
-        sendBtn.disabled = true; 
-        sendBtn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
-        
-        input.value = '';
-
-        try {
-            const res = await fetch(`${API_BASE}/api/admin/reply`, {
-                method: 'POST', headers: getAuthHeaders(),
-                body: JSON.stringify({ sessionId: curChat, text: t }),
-            });
-            const d = await res.json();
-            
-            if (d.success) {
-                if (d.message || d.data) {
-                    const newMsg = d.message || d.data;
-                    appendChatMessages([newMsg], false);
-                    updateChatItemPreview(curChat, newMsg);
-                    setTimeout(() => { document.getElementById('chat-box').scrollTop = document.getElementById('chat-box').scrollHeight; }, 100);
-                }
-            } else {
-                showNotification('错误', d.msg || '发送失败', 'danger');
-                input.value = t; 
+    if (!curChat) { showNotification('提示', '请先选择会话', 'warning'); return; }
+    const input = document.getElementById('reply-in');
+    const t = input.value.trim();
+    if (!t) return;
+    const sendBtn = document.getElementById('chat-send-btn');
+    sendBtn.disabled = true; 
+    sendBtn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
+    input.value = '';
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/reply`, {
+            method: 'POST', headers: getAuthHeaders(),
+            body: JSON.stringify({ sessionId: curChat, text: t }),
+        });
+        const d = await res.json();
+        if (d.success) {
+            // 后端已返回 message 对象，直接追加
+            const newMsg = d.message;
+            if (newMsg) {
+                appendChatMessages([newMsg], false);
+                updateChatItemPreview(curChat, newMsg);
+                setTimeout(() => { document.getElementById('chat-box').scrollTop = document.getElementById('chat-box').scrollHeight; }, 100);
             }
-        } catch (e) { 
-            showNotification('错误', '发送失败', 'danger'); 
-            input.value = t;
+        } else {
+            showNotification('错误', d.msg || '发送失败', 'danger');
+            input.value = t; 
         }
-        finally { 
-            sendBtn.disabled = false; 
-            sendBtn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>'; 
-            input.focus();
-        }
+    } catch (e) { 
+        showNotification('错误', '发送失败', 'danger'); 
+        input.value = t;
+    } finally { 
+        sendBtn.disabled = false; 
+        sendBtn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>'; 
+        input.focus();
     }
+}
 
 async function sendDirectReply(text) {
     if (!curChat) return;
