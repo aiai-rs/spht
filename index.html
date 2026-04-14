@@ -1091,6 +1091,16 @@ function showNotification(title, message, type = 'info', onClickCallback = null)
         </button>
     `;
 
+async function sendQuickReplyDirectly(text) {
+    if (!curChat) return;
+    Swal.close();
+    const input = document.getElementById('reply-in');
+    const oldVal = input.value;
+    input.value = text;
+    await reply(document.getElementById('chat-send-btn'));
+    if (!oldVal) input.value = '';
+    else input.value = oldVal;
+}
     if (onClickCallback) {
         notification.style.cursor = 'pointer';
         notification.onclick = (e) => {
@@ -1110,6 +1120,18 @@ function showNotification(title, message, type = 'info', onClickCallback = null)
         }
     }, 4000);
 }
+async function sendQuickReplyDirectly(text) {
+    if (!curChat) {
+        showNotification('提示', '请先选择一个会话再发送', 'warning');
+        return;
+    }
+    Swal.close(); // 先关闭快捷语弹窗
+    const input = document.getElementById('reply-in');
+    input.value = text; // 自动填充文字
+    // 找到发送按钮并调用现有的 reply 函数执行发送逻辑
+    const sendBtn = document.getElementById('chat-send-btn');
+    await reply(sendBtn);
+}
 
 function showQuickReplies() {
     if (!curData.quickReplies) {
@@ -1123,7 +1145,7 @@ function showQuickReplies() {
     }
     let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
     replies.forEach(r => {
-        html += `<button class="btn-secondary" style="text-align:left; padding:10px; white-space:normal; height:auto; line-height:1.4;" onclick="document.getElementById('reply-in').value='${escapeHtml(r)}'; Swal.close();">${escapeHtml(r)}</button>`;
+        html += `<button class="btn-secondary" style="text-align:left; padding:10px; white-space:normal; height:auto; line-height:1.4;" onclick="sendQuickReplyDirectly('${escapeHtml(r)}')">${escapeHtml(r)}</button>`;
     });
     html += '</div>';
 
@@ -2890,7 +2912,7 @@ function renderMessages(sid) {
  
 /** 发送回复 */
 /** 发送回复 */
-    async function reply(btn) {
+   async function reply(btn) {
         if (!curChat) { showNotification('提示', '请先选择会话', 'warning'); return; }
         const input = document.getElementById('reply-in');
         const t = input.value.trim();
@@ -2900,6 +2922,7 @@ function renderMessages(sid) {
         sendBtn.disabled = true; 
         sendBtn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
         
+        const originalText = t; // 备份一下，万一失败了要还给用户
         input.value = '';
 
         try {
@@ -2909,20 +2932,14 @@ function renderMessages(sid) {
             });
             const d = await res.json();
             
-            if (d.success) {
-                if (d.message || d.data) {
-                    const newMsg = d.message || d.data;
-                    appendChatMessages([newMsg], false);
-                    updateChatItemPreview(curChat, newMsg);
-                    setTimeout(() => { document.getElementById('chat-box').scrollTop = document.getElementById('chat-box').scrollHeight; }, 100);
-                }
-            } else {
+            if (!d.success) {
                 showNotification('错误', d.msg || '发送失败', 'danger');
-                input.value = t; 
+                input.value = originalText; 
             }
+            // 注意：这里不再写 appendChatMessages，交给下面的 socket.on('new_message') 统一处理
         } catch (e) { 
             showNotification('错误', '发送失败', 'danger'); 
-            input.value = t;
+            input.value = originalText;
         }
         finally { 
             sendBtn.disabled = false; 
@@ -2957,12 +2974,16 @@ async function sendAdminChatImage(input) {
             method: 'POST', headers: { 'Authorization': adminToken }, body: formData,
         });
         const d = await res.json();
-                    if (d.success) {
-                await fetch(`${API_BASE}/api/admin/reply`, {
-                    method: 'POST', headers: getAuthHeaders(),
-                    body: JSON.stringify({ sessionId: curChat, text: d.url, msgType: 'image' }),
-                });
-            } else { showNotification('错误', d.error || '上传失败', 'danger'); }
+        if (d.success) {
+            const replyRes = await fetch(`${API_BASE}/api/admin/reply`, {
+                method: 'POST', headers: getAuthHeaders(),
+                body: JSON.stringify({ sessionId: curChat, text: d.url, msgType: 'image' }),
+            });
+            const replyData = await replyRes.json();
+            if (!replyData.success) {
+                showNotification('错误', '图片消息发送失败', 'danger');
+            }
+        } else { showNotification('错误', d.error || '上传失败', 'danger'); }
     } catch (e) { showNotification('错误', '网络故障', 'danger'); }
     finally {
         input.value = '';
@@ -3127,18 +3148,18 @@ if (adminToken) {
  
 socket.on('admin_update', (data) => {
     const activePage = document.querySelector('.page.active');
+    if (!activePage) return;
+    if (activePage.id === 'chat') return;
     if (data.type === 'order' || data.type === 'user' || data.type === 'funds') {
-        if (activePage) {
-            const checkedIds = Array.from(document.querySelectorAll('.prod-checkbox:checked, .hot-prod-checkbox:checked')).map(cb => cb.value);
-            if (activePage.id === 'order') {
-                loadOrdersPage(orderCurrentPage).then(() => {
-                    checkedIds.forEach(id => { const cb = document.querySelector(`.prod-checkbox[value="${id}"]`); if(cb) cb.checked = true; });
-                });
-            }
-            else if (activePage.id === 'users') loadUsersPage(userCurrentPage);
-            else if (activePage.id === 'funds') loadBalanceLogs(fundCurrentPage);
-            else if (activePage.id === 'dash') refresh(true);
+        const checkedIds = Array.from(document.querySelectorAll('.prod-checkbox:checked, .hot-prod-checkbox:checked')).map(cb => cb.value);
+        if (activePage.id === 'order') {
+            loadOrdersPage(orderCurrentPage).then(() => {
+                checkedIds.forEach(id => { const cb = document.querySelector(`.prod-checkbox[value="${id}"]`); if(cb) cb.checked = true; });
+            });
         }
+        else if (activePage.id === 'users') loadUsersPage(userCurrentPage);
+        else if (activePage.id === 'funds') loadBalanceLogs(fundCurrentPage);
+        else if (activePage.id === 'dash') refresh(true);
     } else {
         refresh(true);
     }
@@ -3209,6 +3230,7 @@ socket.on('message_recalled', (data) => {
 });
  
 socket.on('new_message', (data) => {
+    if (document.querySelector(`[data-msgid="${data.id}"]`)) return;
     // 更新内存缓存（用于会话列表预览）
     if (!curData.chats) curData.chats = {};
     if (!curData.chats[data.session_id]) curData.chats[data.session_id] = [];
@@ -3288,9 +3310,19 @@ if (chatMessageCache[data.session_id] && chatMessageCache[data.session_id].messa
                 badge.style.display = 'inline-block';
             }
         } else {
-            if (!chatItemExists) {
-                loadChatSessions(true);
-            }
+            const container = document.getElementById('chat-users');
+            const emptyTip = container.querySelector('div[style*="text-align:center"]');
+            if (emptyTip) container.innerHTML = '';
+            renderChatSessionItems([{
+                session_id: data.session_id,
+                display_uid: data.session_id.replace('hr_', '').replace('user_', ''),
+                last_message_preview: data.content,
+                msg_type: data.msg_type,
+                last_message_time: data.created_at,
+                sender: data.sender,
+                source: data.source,
+                unread_count: 1
+            }], false);
         }
         updateBadge();
 
