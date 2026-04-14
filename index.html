@@ -1318,20 +1318,28 @@ function nav(id, isPopState = false) {
     }
  
     // 移动端：非聊天页恢复滚动
-    if (window.innerWidth <= 768) {
-        document.body.style.overflow = '';
-        const wrapper = document.getElementById('chat-wrapper');
-        if (wrapper) wrapper.classList.remove('active');
-    }
- 
-    // [Fix-10] 离开资金页时重置加载标志，下次进入重新拉取
-    if (id !== 'funds') fundLogsLoaded = false;
- 
-    window.scrollTo(0, 0);
-    refresh();
- 
-    if (!isPopState) history.pushState({ page: id }, null, '');
-}
+   if (window.innerWidth <= 768) {
+            document.body.style.overflow = '';
+            const wrapper = document.getElementById('chat-wrapper');
+            if (wrapper) wrapper.classList.remove('active');
+        }
+
+        if (id !== 'funds') fundLogsLoaded = false;
+
+        window.scrollTo(0, 0);
+        
+        switch (id) {
+            case 'dash': if (adminToken) refresh(true); break;
+            case 'prod': loadProductsPage(); break;
+            case 'hire': loadHireList(); break;
+            case 'funds': if (!fundLogsLoaded) { fundLogsLoaded = true; loadBalanceLogs(); } break;
+            case 'order': loadOrdersPage(); break;
+            case 'users': loadUsersPage(); break;
+            case 'chat': loadChatSessions(true); updateBadge(); break;
+        }
+
+        if (!isPopState) history.pushState({ page: id }, null, '');
+    }
  
 /* ================================================================
    ⑦ 数据刷新 / Data Refresh
@@ -1382,32 +1390,6 @@ async function refresh(force = false) {
             let popVal = curData.popup;
             if (popVal === true || popVal === 'true') popVal = '86400000';
             document.getElementById('ann-pop').value = popVal || 'false';
-        }
-        const activePage = document.querySelector('.page.active');
-        if (!activePage) return;
-        switch (activePage.id) {
-            case 'prod':
-                loadProductsPage();
-                break;
-            case 'hire':
-                loadHireList();
-                break;
-            case 'funds':
-                if (!fundLogsLoaded) {
-                    fundLogsLoaded = true;
-                    loadBalanceLogs();
-                }
-                break;
-            case 'order':
-                loadOrdersPage();
-                break;
-            case 'users':
-                loadUsersPage();
-                break;
-            case 'chat':
-                loadChatSessions(true);
-                updateBadge();
-                break;
         }
     } catch (e) {
         console.error('刷新数据错误:', e);
@@ -1982,9 +1964,8 @@ const switchCatFilter = switchProductCategory;
  
 function renderCategorySort() {
     const container = document.getElementById('cat-sort-list');
-    if (!curData.products) return;
-    const cats = [...new Set(curData.products.map(p => p.category))];
-    container.innerHTML = cats.map(cat => `
+    if (!cachedProductCategories || cachedProductCategories.length === 0) return;
+    container.innerHTML = cachedProductCategories.map(cat => `
         <div class="sortable-item" data-cat="${escapeHtml(cat)}">
             <i class="ri-drag-move-2-line drag-handle"></i>
             <span>${escapeHtml(cat)}</span>
@@ -2142,50 +2123,58 @@ async function executeHotProd(ids, isHot) {
 }
 
 /* ================== 新增：热销商品弹窗独立逻辑 ================== */
-function openHotProdModal() {
-    renderHotProdList();
-    document.getElementById('hot-prod-modal').style.display = 'flex';
+/* ================== 新增：热销商品弹窗独立逻辑 ================== */
+async function openHotProdModal() {
+    document.getElementById('hot-prod-modal').style.display = 'flex';
+    await renderHotProdList();
 }
 
 function closeHotProdModal() {
-    document.getElementById('hot-prod-modal').style.display = 'none';
+    document.getElementById('hot-prod-modal').style.display = 'none';
 }
 
-function renderHotProdList() {
-    const container = document.getElementById('hot-prod-list');
-    // 只筛选出当前为热销状态的商品
-    const prods = (curData.products || []).filter(p => p.is_hot);
+async function renderHotProdList() {
+    const container = document.getElementById('hot-prod-list');
+    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);"><div class="loader"></div> 加载热销商品中...</div>';
+    
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/products?page=1&limit=1000`, { headers: getAuthHeaders() });
+        const data = await res.json();
+        const prods = (data.products || []).filter(p => p.is_hot);
 
-    if (prods.length === 0) {
-        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">暂无热销商品</div>';
-        document.getElementById('check-all-hot-prods').checked = false;
-        return;
-    }
+        if (prods.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">暂无热销商品</div>';
+            document.getElementById('check-all-hot-prods').checked = false;
+            return;
+        }
 
-    container.innerHTML = prods.map(p => {
-        let imgHtml = '<div style="width:40px; height:40px; background:var(--bg-body); border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; color:var(--text-muted); margin-right:12px;"><i class="ri-image-line"></i></div>';
-        let images = [];
-        try { images = p.image_url ? JSON.parse(p.image_url) : []; }
-        catch (e) { if (p.image_url) images = [p.image_url]; }
-        if (images.length > 0) {
-            let firstImg = images[0];
-            if (!firstImg.startsWith('data:') && !firstImg.startsWith('http')) firstImg = `${API_BASE}${firstImg}`;
-            imgHtml = `<img src="${escapeHtml(firstImg)}" style="width:40px; height:40px; object-fit:cover; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-right:12px;">`;
-        }
+        container.innerHTML = prods.map(p => {
+            let imgHtml = '<div style="width:40px; height:40px; background:var(--bg-body); border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; color:var(--text-muted); margin-right:12px;"><i class="ri-image-line"></i></div>';
+            let images = [];
+            try { images = p.image_url ? JSON.parse(p.image_url) : []; }
+            catch (e) { if (p.image_url) images = [p.image_url]; }
+            if (images.length > 0) {
+                let firstImg = images[0];
+                if (!firstImg.startsWith('data:') && !firstImg.startsWith('http')) firstImg = `${API_BASE}${firstImg}`;
+                imgHtml = `<img src="${escapeHtml(firstImg)}" style="width:40px; height:40px; object-fit:cover; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-right:12px;">`;
+            }
 
-        return `
-        <div style="display:flex; align-items:center; padding:12px; border:1px solid var(--border-color); border-radius:var(--radius-md); background:#fff; transition:var(--transition);">
-            <input type="checkbox" class="hot-prod-checkbox" value="${escapeHtml(String(p.id))}" style="width:16px; height:16px; margin:0; margin-right:12px; box-shadow:none;">
-            ${imgHtml}
-            <div style="flex:1; min-width:0;">
-                <div style="font-weight:600; font-size:14px; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(p.name)}</div>
-                <div style="font-size:12px; color:var(--success); font-weight:600; margin-top:4px;">${escapeHtml(String(p.price))} USDT</div>
-            </div>
-            <button class="btn-secondary" onclick="executeHotProd(['${escapeHtml(String(p.id))}'], false)" style="padding:6px 12px; font-size:12px; color:var(--danger); border-color:#fecaca; margin-left:12px;">
-                取消热销
-            </button>
-        </div>`;
-    }).join('');
+            return `
+            <div style="display:flex; align-items:center; padding:12px; border:1px solid var(--border-color); border-radius:var(--radius-md); background:#fff; transition:var(--transition);">
+                <input type="checkbox" class="hot-prod-checkbox" value="${escapeHtml(String(p.id))}" style="width:16px; height:16px; margin:0; margin-right:12px; box-shadow:none;">
+                ${imgHtml}
+                <div style="flex:1; min-width:0;">
+                    <div style="font-weight:600; font-size:14px; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(p.name)}</div>
+                    <div style="font-size:12px; color:var(--success); font-weight:600; margin-top:4px;">${escapeHtml(String(p.price))} USDT</div>
+                </div>
+                <button class="btn-secondary" onclick="executeHotProd(['${escapeHtml(String(p.id))}'], false)" style="padding:6px 12px; font-size:12px; color:var(--danger); border-color:#fecaca; margin-left:12px;">
+                    取消热销
+                </button>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">加载失败，请检查网络</div>';
+    }
 }
 
 function toggleAllHotProds(el) {
@@ -3183,22 +3172,22 @@ if (adminToken) {
 }
  
 socket.on('admin_update', (data) => {
-    const activePage = document.querySelector('.page.active');
-    if (!activePage) return;
-    if (activePage.id === 'chat') return;
-    if (data.type === 'order' || data.type === 'user' || data.type === 'funds') {
-        const checkedIds = Array.from(document.querySelectorAll('.prod-checkbox:checked, .hot-prod-checkbox:checked')).map(cb => cb.value);
-        if (activePage.id === 'order') {
-            loadOrdersPage(orderCurrentPage, true).then(() => {
-               checkedIds.forEach(id => { const cb = document.querySelector(`.prod-checkbox[value="${id}"]`); if(cb) cb.checked = true; });
-            });
-        }
-        else if (activePage.id === 'users') loadUsersPage(userCurrentPage, true);
-        else if (activePage.id === 'funds') loadBalanceLogs(fundCurrentPage, true);
-        else if (activePage.id === 'dash') refresh(true);
-    } else {
-        refresh(true);
-    }
+    const activePage = document.querySelector('.page.active');
+    if (!activePage) return;
+    if (activePage.id === 'chat') return;
+    if (data.type === 'order' || data.type === 'user' || data.type === 'funds') {
+        const checkedIds = Array.from(document.querySelectorAll('.prod-checkbox:checked, .hot-prod-checkbox:checked')).map(cb => cb.value);
+        if (activePage.id === 'order') {
+            loadOrdersPage(orderCurrentPage, true).then(() => {
+               checkedIds.forEach(id => { const cb = document.querySelector(`.prod-checkbox[value="${id}"]`); if(cb) cb.checked = true; });
+            });
+        }
+        else if (activePage.id === 'users') loadUsersPage(userCurrentPage, true);
+        else if (activePage.id === 'funds') loadBalanceLogs(fundCurrentPage, true);
+        else if (activePage.id === 'dash') refresh(true);
+    } else if (activePage.id === 'dash') {
+        refresh(true);
+    }
 });
 socket.on('order_update', () => {
     const activePage = document.querySelector('.page.active');
@@ -3209,14 +3198,14 @@ socket.on('order_update', () => {
     }
 });
 socket.on('global_update', () => {
-    const activePage = document.querySelector('.page.active');
-    if (activePage && activePage.id === 'prod') {
-        loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
-    } else if (activePage && activePage.id === 'hire') {
-        loadHireList(true);
-    } else {
-        refresh(true);
-    }
+    const activePage = document.querySelector('.page.active');
+    if (activePage && activePage.id === 'prod') {
+        loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
+    } else if (activePage && activePage.id === 'hire') {
+        loadHireList(true);
+    } else if (activePage && activePage.id === 'dash') {
+        refresh(true);
+    }
 });
  
 socket.on('admin_chat_read', (data) => {
