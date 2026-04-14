@@ -1448,11 +1448,13 @@ let orderCurrentPage = 1;
 let orderTotalPages = 1;
 let orderSearchTerm = '';
 let orderStatusFilter = 'all';
-async function loadOrdersPage(page = 1) {
+async function loadOrdersPage(page = 1, silent = false) {
     const tbody = document.getElementById('order-list');
     const loadingDiv = document.getElementById('order-loading');
-    loadingDiv.style.display = 'block';
-    tbody.innerHTML = '';
+    if (!silent) {
+        loadingDiv.style.display = 'block';
+        tbody.innerHTML = '';
+    }
     try {
         const params = new URLSearchParams({
             page: page,
@@ -1632,10 +1634,12 @@ let userTotalPages = 1;
 let userSearchTerm = '';
 let userSourceFilter = 'all';
 const USERS_PER_PAGE = 30;
-async function loadUsersPage(page = 1) {
-    const container = document.getElementById('user-list');
-    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">加载中...</div>';
-    try {
+async function loadUsersPage(page = 1, silent = false) {
+    const container = document.getElementById('user-list');
+    if (!silent) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">加载中...</div>';
+    }
+    try {
         const params = new URLSearchParams({
             page: page,
             limit: USERS_PER_PAGE,
@@ -1751,22 +1755,28 @@ function setUserSourceFilter(el) {
 }
  
 async function delUser(uid) {
-    const res = await Swal.fire({
-        title: '永久删除此用户?',
-        text: '操作不可逆，将清空相关数据',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: 'var(--danger)',
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-    });
-    if (res.isConfirmed) {
-        try {
-            await fetch(`${API_BASE}/api/admin/user/${uid}`, { method: 'DELETE', headers: getAuthHeaders() });
-            showNotification('成功', '用户已删除', 'success');
-            refresh();
-        } catch (e) { showNotification('错误', '删除失败', 'danger'); }
-    }
+    const res = await Swal.fire({
+        title: '永久删除此用户?',
+        text: '操作不可逆，将清空相关数据',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: 'var(--danger)',
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+    });
+    if (res.isConfirmed) {
+        try {
+            await fetch(`${API_BASE}/api/admin/user/${uid}`, { method: 'DELETE', headers: getAuthHeaders() });
+            showNotification('成功', '用户已删除', 'success');
+            const btn = document.querySelector(`button[onclick="delUser('${uid}')"]`);
+            if (btn) {
+                const item = btn.closest('.user-item');
+                if (item) item.remove();
+            }
+            const countEl = document.getElementById('user-count');
+            if (countEl) countEl.innerText = Math.max(0, parseInt(countEl.innerText) - 1);
+        } catch (e) { showNotification('错误', '删除失败', 'danger'); }
+    }
 }
  
 async function editBalance(uid) {
@@ -1798,8 +1808,8 @@ async function editBalance(uid) {
                 body: JSON.stringify({ userId: uid, ...formValues }),
             });
             const d = await res.json();
-            if (d.success) { Swal.fire({ icon: 'success', title: '操作成功', timer: 1500, showConfirmButton: false }); refresh(); }
-            else Swal.fire('失败', d.msg, 'error');
+            if (d.success) { Swal.fire({ icon: 'success', title: '操作成功', timer: 1500, showConfirmButton: false }); loadUsersPage(userCurrentPage, true); }
+            else Swal.fire('失败', d.msg, 'error');
         } catch (e) { Swal.fire('错误', '请求失败', 'error'); }
     }
 }
@@ -1832,10 +1842,12 @@ let totalProductPages = 1;
 let currentProductCategoryFilter = '全部';
 let cachedProductCategories = [];
 
-async function loadProductsPage(page = 1, category = currentProductCategoryFilter) {
-    const container = document.getElementById('prod-list-manage');
-    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);"><div class="loader"></div> 加载商品列表中...</div>';
-    try {
+async function loadProductsPage(page = 1, category = currentProductCategoryFilter, silent = false) {
+    const container = document.getElementById('prod-list-manage');
+    if (!silent) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);"><div class="loader"></div> 加载商品列表中...</div>';
+    }
+    try {
         const url = `${API_BASE}/api/admin/products?page=${page}&limit=${PRODUCTS_PER_PAGE}&category=${encodeURIComponent(category === '全部' ? '' : category)}`;
         const res = await fetch(url, { headers: getAuthHeaders() });
         if (res.status === 401) {
@@ -2002,7 +2014,7 @@ async function saveCategorySort(btn) {
         await Promise.all(promises);
         showNotification('成功', '分类排序已保存', 'success');
         closeCatSortModal();
-        refresh();
+        loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
     } catch (e) {
         showNotification('错误', '保存失败', 'danger');
     } finally {
@@ -2081,19 +2093,23 @@ function renderVariants() {
 function addVariant() { tempVariants.push({ name: '', price: '' }); renderVariants(); }
  
 async function delProd(id) {
-    if (!confirm('确定永久删除该商品？')) return;
-    try {
-        await fetch(`${API_BASE}/api/admin/product/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
-        showNotification('成功', '商品已删除', 'success');
-        refresh();
-    } catch (e) { showNotification('错误', '删除失败', 'danger'); }
+    if (!confirm('确定永久删除该商品？')) return;
+    try {
+        await fetch(`${API_BASE}/api/admin/product/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+        showNotification('成功', '商品已删除', 'success');
+        const btn = document.querySelector(`button[onclick="delProd('${id}')"]`);
+        if (btn) {
+            const item = btn.closest('.user-item');
+            if (item) item.remove();
+        }
+    } catch (e) { showNotification('错误', '删除失败', 'danger'); }
 }
  
 async function pinProd(id) {
     try {
         const res = await fetch(`${API_BASE}/api/admin/product/pin/${id}`, { method: 'POST', headers: getAuthHeaders() });
         const d   = await res.json();
-        if (d.success) { showNotification('成功', '置顶状态已刷新', 'success'); await refresh(); }
+        if (d.success) { showNotification('成功', '置顶状态已刷新', 'success'); loadProductsPage(currentProductPage, currentProductCategoryFilter, true); }
         else showNotification('失败', d.msg || '操作异常', 'warning');
     } catch (e) { showNotification('错误', '请求失败', 'danger'); }
 }
@@ -2117,7 +2133,7 @@ async function executeHotProd(ids, isHot) {
         const d = await res.json();
         if (d.success) {
             showNotification('成功', '热销状态已刷新', 'success');
-            await refresh();
+            loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
             document.getElementById('check-all-prods').checked = false;
         } else {
             showNotification('失败', '操作异常', 'warning');
@@ -2214,11 +2230,11 @@ async function saveProd(btn) {
             }),
         });
         const result = await response.json();
-        if (response.ok && result.success) {
-            showNotification('成功', '商品保存成功', 'success');
-            closeProdModal();
-            refresh();
-        } else {
+        if (response.ok && result.success) {
+            showNotification('成功', '商品保存成功', 'success');
+            closeProdModal();
+            loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
+        } else {
             showNotification('错误', result.error || '保存失败', 'danger');
         }
     } catch (e) {
@@ -2233,9 +2249,11 @@ async function saveProd(btn) {
    [Fix-4] renderHireList 改用 DOM API 赋值，消除 HTML 注入风险
 ================================================================ */
  
-async function loadHireList() {
+async function loadHireList(silent = false) {
     const container = document.getElementById('h-list-container');
-    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">加载中...</div>';
+    if (!silent) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">加载中...</div>';
+    }
     try {
         const res = await fetch(`${API_BASE}/api/admin/hiring`, { headers: getAuthHeaders() });
         const data = await res.json();
@@ -2330,13 +2348,15 @@ async function updHire(btn) {
 let fundCurrentPage = 1;
 let fundTotalPages = 1;
 const FUND_PER_PAGE = 30;
-async function loadBalanceLogs(page = 1) {
+async function loadBalanceLogs(page = 1, silent = false) {
     const container = document.getElementById('fund-list');
     const uid = (document.getElementById('fund-user-search').value || '').trim();
     const params = new URLSearchParams({ page: page, limit: FUND_PER_PAGE });
     if (uid) params.append('userId', uid);
     const url = `${API_BASE}/api/admin/balance_logs?${params}`;
-    container.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);"><div class="loader" style="border-top-color:var(--primary); margin-bottom:8px;"></div><br>拉取数据中...</td></tr>';
+    if (!silent) {
+        container.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);"><div class="loader" style="border-top-color:var(--primary); margin-bottom:8px;"></div><br>拉取数据中...</td></tr>';
+    }
     try {
         const res = await fetch(url, { headers: getAuthHeaders() });
         const data = await res.json();
@@ -2456,7 +2476,7 @@ async function cancelOrderAdmin(oid) {
             const d = await res.json();
             if (d.success) showNotification('成功', '订单已终止', 'success');
             else showNotification('提示', d.msg || '操作完成', 'info');
-            refresh();
+            loadOrdersPage(orderCurrentPage, true);
         } catch (e) { showNotification('错误', '请求异常', 'danger'); }
     }
 }
@@ -2469,7 +2489,7 @@ async function saveTrack(oid) {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ orderId: oid, trackingNumber: num }),
         });
         showNotification('成功', '物流号已保存', 'success');
-        refresh();
+        loadOrdersPage(orderCurrentPage, true);
     } catch (e) { showNotification('错误', '保存异常', 'danger'); }
 }
  
@@ -2508,7 +2528,7 @@ async function uploadQrcode(orderId, orderType = 'order') {
                 } catch (error) { Swal.showValidationMessage(`上传失败: ${error}`); }
             },
         });
-        if (isConfirmed) { Swal.fire({ icon: 'success', title: '成功', timer: 1500, showConfirmButton: false }); refresh(); }
+        if (isConfirmed) { Swal.fire({ icon: 'success', title: '成功', timer: 1500, showConfirmButton: false }); loadOrdersPage(orderCurrentPage, true); }
         input.value = '';
     };
     reader.readAsDataURL(file);
@@ -3169,12 +3189,12 @@ socket.on('admin_update', (data) => {
     if (data.type === 'order' || data.type === 'user' || data.type === 'funds') {
         const checkedIds = Array.from(document.querySelectorAll('.prod-checkbox:checked, .hot-prod-checkbox:checked')).map(cb => cb.value);
         if (activePage.id === 'order') {
-            loadOrdersPage(orderCurrentPage).then(() => {
-                checkedIds.forEach(id => { const cb = document.querySelector(`.prod-checkbox[value="${id}"]`); if(cb) cb.checked = true; });
+            loadOrdersPage(orderCurrentPage, true).then(() => {
+               checkedIds.forEach(id => { const cb = document.querySelector(`.prod-checkbox[value="${id}"]`); if(cb) cb.checked = true; });
             });
         }
-        else if (activePage.id === 'users') loadUsersPage(userCurrentPage);
-        else if (activePage.id === 'funds') loadBalanceLogs(fundCurrentPage);
+        else if (activePage.id === 'users') loadUsersPage(userCurrentPage, true);
+        else if (activePage.id === 'funds') loadBalanceLogs(fundCurrentPage, true);
         else if (activePage.id === 'dash') refresh(true);
     } else {
         refresh(true);
@@ -3183,7 +3203,7 @@ socket.on('admin_update', (data) => {
 socket.on('order_update', () => {
     const activePage = document.querySelector('.page.active');
     if (activePage && activePage.id === 'order') {
-        loadOrdersPage(orderCurrentPage);
+        loadOrdersPage(orderCurrentPage, true);
     } else if (activePage && activePage.id === 'dash') {
         refresh(true);
     }
@@ -3191,9 +3211,9 @@ socket.on('order_update', () => {
 socket.on('global_update', () => {
     const activePage = document.querySelector('.page.active');
     if (activePage && activePage.id === 'prod') {
-        loadProductsPage(currentProductPage, currentProductCategoryFilter);
+        loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
     } else if (activePage && activePage.id === 'hire') {
-        loadHireList();
+        loadHireList(true);
     } else {
         refresh(true);
     }
