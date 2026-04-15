@@ -636,6 +636,9 @@
 <div id="notification-container"
      style="position:fixed; top:24px; right:24px; display:flex; flex-direction:column; gap:12px; z-index:100002; pointer-events:none;">
 </div>
+<div id="image-viewer-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:100005; justify-content:center; align-items:center; cursor:zoom-out; backdrop-filter: blur(5px);" onclick="this.style.display='none'">
+    <img id="image-viewer-img" src="" style="max-width:90vw; max-height:90vh; object-fit:contain; border-radius:8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+</div>
  
 <!-- 登录模态框 -->
 <div id="login-modal" class="modal-overlay">
@@ -858,11 +861,11 @@
                 <h2 style="margin:0; color:var(--danger);"><i class="ri-fire-fill"></i> 当前热销商品管理</h2>
                 <button onclick="closeHotProdModal()" class="btn-soft" style="padding:4px; border-radius:50%;"><i class="ri-close-line" style="font-size:20px;"></i></button>
             </div>
-                        <div style="display:flex; gap:12px; margin-bottom:16px; align-items:center; flex-shrink:0; padding-bottom:16px; border-bottom:1px solid var(--border-color);">
-                <input type="checkbox" id="check-all-hot-prods" onchange="toggleAllHotProds(this)" style="width:16px; height:16px; margin:0; box-shadow:none;">
-                <span style="font-size:14px; font-weight:500;">全选本页</span>
-                <button class="btn-secondary" onclick="batchCancelHotFromModal()" style="margin-left:auto; color:var(--text-main);"><i class="ri-close-circle-line"></i> 批量取消热销</button>
-            </div>
+                       <div style="display:flex; gap:12px; margin-bottom:16px; align-items:center; flex-shrink:0; padding-bottom:16px; border-bottom:1px solid var(--border-color); flex-wrap: nowrap;">
+    <input type="checkbox" id="check-all-hot-prods" onchange="toggleAllHotProds(this)" style="width:16px; height:16px; margin:0; box-shadow:none;">
+    <span style="font-size:14px; font-weight:500; white-space: nowrap;">全选本页</span>
+    <button class="btn-secondary" onclick="batchCancelHotFromModal()" style="margin-left:auto; color:var(--text-main); white-space: nowrap;"><i class="ri-close-circle-line"></i> 批量取消热销</button>
+</div>
                         <div id="hot-prod-list" style="overflow-y:auto; flex:1; padding-right:8px; display:flex; flex-direction:column; gap:8px;">
             </div>
         </div>
@@ -1045,6 +1048,10 @@
  * 防 XSS：转义 HTML 特殊字符
  * 同时处理 null/undefined，保证安全
  */
+function viewImageFullscreen(url) {
+    document.getElementById('image-viewer-img').src = url;
+    document.getElementById('image-viewer-modal').style.display = 'flex';
+}
 function escapeHtml(text) {
     if (text == null) return '';
     return String(text)
@@ -1211,13 +1218,44 @@ let adminToken = localStorage.getItem('adminToken');
 /* ================================================================
    ③ Socket.io 连接
 ================================================================ */
- 
+
 const socket = io(API_BASE, {
     transports: ['websocket'],
     upgrade: false,
     reconnection: true,
 });
- 
+
+let hasConnectedBefore = false;
+
+socket.on('connect', () => {
+    if (hasConnectedBefore && adminToken) {
+        showNotification('网络恢复', '正在重新同步当前页面数据...', 'success');
+        const activePage = document.querySelector('.page.active');
+        if (activePage) {
+            const pid = activePage.id;
+            if (pid === 'dash') refresh(true);
+            else if (pid === 'prod') loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
+            else if (pid === 'order') loadOrdersPage(orderCurrentPage, true);
+            else if (pid === 'users') loadUsersPage(userCurrentPage, true);
+            else if (pid === 'funds') loadBalanceLogs(fundCurrentPage, true);
+            else if (pid === 'hire') loadHireList(true);
+            else if (pid === 'chat') {
+                chatSessionsOffset = 0;
+                chatSessionsHasMore = true;
+                loadChatSessions(true);
+                if (curChat) openChatPanel(curChat);
+            }
+        }
+    }
+    hasConnectedBefore = true;
+});
+
+socket.on('disconnect', () => {
+    if (adminToken) {
+        showNotification('网络断开', '正在尝试重新连接服务器...', 'warning');
+    }
+});
+
 /* ================================================================
    ④ PWA 安装
 ================================================================ */
@@ -1328,14 +1366,14 @@ function nav(id, isPopState = false) {
 
         window.scrollTo(0, 0);
         
-        switch (id) {
+       switch (id) {
             case 'dash': if (adminToken) refresh(true); break;
-            case 'prod': loadProductsPage(); break;
-            case 'hire': loadHireList(); break;
-            case 'funds': if (!fundLogsLoaded) { fundLogsLoaded = true; loadBalanceLogs(); } break;
-            case 'order': loadOrdersPage(); break;
-            case 'users': loadUsersPage(); break;
-            case 'chat': loadChatSessions(true); updateBadge(); break;
+            case 'prod': loadProductsPage(currentProductPage, currentProductCategoryFilter, true); break;
+            case 'hire': loadHireList(true); break;
+            case 'funds': loadBalanceLogs(fundCurrentPage, true); fundLogsLoaded = true; break;
+            case 'order': loadOrdersPage(orderCurrentPage, true); break;
+            case 'users': loadUsersPage(userCurrentPage, true); break;
+            case 'chat': if(chatSessionsOffset === 0) loadChatSessions(true); updateBadge(); break;
         }
 
         if (!isPopState) history.pushState({ page: id }, null, '');
@@ -1460,120 +1498,122 @@ async function loadOrdersPage(page = 1, silent = false) {
         loadingDiv.style.display = 'none';
     }
 }
+function renderSingleOrderRow(o) {
+    const isPaid = o.status === '已支付';
+    const quantity = o.quantity || 1;
+    const productName = o.product_name || '未知商品';
+    let ship = null;
+    try { ship = JSON.parse(o.shipping_info); } catch (e) {}
+    let addrHtml = '';
+    if (ship && ship.name) {
+        addrHtml = `
+        <div onclick="copyShippingAddress(this)" 
+             data-name="${escapeHtml(ship.name)}" 
+             data-tel="${escapeHtml(ship.tel)}" 
+             data-addr="${escapeHtml(ship.addr)}"
+             style="background:var(--bg-body); padding:10px; border-radius:var(--radius-md); margin-top:8px; font-size:12px; color:var(--text-secondary); cursor:pointer; border:1px dashed transparent; transition:var(--transition);"
+             onmouseover="this.style.borderColor='var(--primary)'; this.style.background='var(--primary-light)';"
+             onmouseout="this.style.borderColor='transparent'; this.style.background='var(--bg-body)';">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <div style="font-weight:500; color:var(--text-main);">
+                    👤 ${escapeHtml(ship.name)}   📞 ${escapeHtml(ship.tel)}
+                </div>
+                <i class="ri-file-copy-line" style="color:var(--primary); font-size:14px;"></i>
+            </div>
+            <div style="line-height:1.4;">📍 ${escapeHtml(ship.addr)}</div>
+        </div>`;
+    }
+    const money = o.payment_method === 'USDT' ? `${o.usdt_amount} USDT` : `¥${o.cny_amount} CNY`;
+    const userContact = o.user_contact || '未知用户';
+    const userDisplay = o.user_display || userContact;
+    let action = '';
+    if (!isPaid && o.status !== '已取消' && o.status !== '已关闭') {
+        action += `
+            <button onclick="cancelOrderAdmin('${escapeHtml(o.order_id)}')"
+                    style="background:var(--danger); width:100%; margin-bottom:8px; font-size:12px; padding:6px 12px;">
+                取消订单
+            </button>
+            <div style="font-size:11px; color:var(--text-muted); text-align:center; margin-bottom:8px;">在群内确认收款</div>`;
+    }
+    if (o.status === '已取消' || (o.status || '').includes('取消')) {
+        action += `<div style="color:var(--danger); font-size:12px; font-weight:500; margin-top:4px;"><i class="ri-close-circle-line"></i> 订单已取消</div>`;
+    }
+    if (!isPaid && o.payment_method !== 'USDT' && o.status !== '已取消') {
+        const qrPreviewHtml = o.qrcode_url
+            ? `<div style="margin-top:8px; position:relative; width:48px; height:48px; border-radius:4px; overflow:hidden; border:1px solid var(--border-color); cursor:pointer;"
+                    data-qrurl="${escapeHtml(o.qrcode_url)}" onclick="viewQrcode(this)">
+                    <img src="${escapeHtml(o.qrcode_url)}" style="width:100%; height:100%; object-fit:cover;">
+               </div>`
+            : '';
+        action += `
+            <div style="margin-top:8px; border:1px solid var(--border-color); border-radius:var(--radius-md); padding:12px; background:var(--bg-body);">
+                <div style="font-size:12px; font-weight:500; margin-bottom:8px; display:flex; justify-content:space-between;">
+                    <span>收款二维码</span>
+                    ${o.qrcode_url ? '<span style="color:var(--success);"><i class="ri-check-line"></i> 已传</span>' : ''}
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <input type="file" id="qrcode-${escapeHtml(o.order_id)}" accept="image/*" style="display:none;"
+                           onchange="document.getElementById('btn-upload-${escapeHtml(o.order_id)}').click()">
+                    <button class="btn-secondary"
+                            onclick="document.getElementById('qrcode-${escapeHtml(o.order_id)}').click()"
+                            style="flex:1; font-size:12px; padding:6px;">上传</button>
+                    <button id="btn-upload-${escapeHtml(o.order_id)}"
+                            onclick="uploadQrcode('${escapeHtml(o.order_id)}', 'order')"
+                            style="display:none;"></button>
+                </div>
+                ${qrPreviewHtml}
+            </div>`;
+    }
+    const trackHtml = `
+        <div style="margin-top:8px; display:flex; gap:8px;">
+            <input id="track-${escapeHtml(o.order_id)}" value="${escapeHtml(o.tracking_number || '')}"
+                   placeholder="输入物流单号" style="font-size:12px; padding:6px 10px;">
+            <button class="btn-secondary" onclick="saveTrack('${escapeHtml(o.order_id)}')"
+                    style="padding:6px 12px; font-size:12px;">保存</button>
+        </div>`;
+    const sourceBadge = (o.source || '').includes('8888')
+        ? '<span class="tag" style="background:#fef3c7; color:#d97706;">龍哥</span>'
+        : '<span class="tag" style="background:#e0e7ff; color:#4f46e5;">Boss</span>';
+    const variantDisplay = o.variant_name
+        ? `<div style="color:var(--primary); font-size:11px; margin-top:2px;">规格: ${escapeHtml(o.variant_name)}</div>`
+        : '';
+    return `
+    <tr id="order-row-${escapeHtml(o.order_id)}">
+        <td>
+            <div style="margin-bottom:6px;">${sourceBadge}</div>
+            <div style="font-weight:600; font-family:monospace; font-size:14px;">${escapeHtml(o.order_id)}</div>
+            <div style="color:var(--text-muted); font-size:11px; margin-top:4px;">${new Date(o.created_at).toLocaleString()}</div>
+        </td>
+        <td>
+            <div style="font-weight:500;">${escapeHtml(productName)}</div>
+            ${variantDisplay}
+            <div style="color:var(--text-secondary); font-size:12px; margin-top:4px;">数量: ${quantity}</div>
+            <div style="color:var(--text-main); font-weight:600; margin-top:4px;">${escapeHtml(money)}</div>
+        </td>
+        <td>
+            <div style="font-weight:500;">${escapeHtml(userDisplay)}</div>
+            <div style="color:var(--text-secondary); font-size:12px; margin-top:2px;">${escapeHtml(userContact)}</div>
+            <div style="color:var(--text-muted); font-size:11px; margin-top:4px; font-family:monospace;">UID: ${escapeHtml(String(o.user_id || '--'))}</div>
+        </td>
+        <td>
+            <div style="font-size:12px; font-weight:500; margin-bottom:6px;">${escapeHtml(o.payment_method || '')}</div>
+            <span class="tag ${isPaid ? 'paid' : 'wait'}">${escapeHtml(o.status)}</span>
+        </td>
+        <td style="min-width:220px;">
+            ${action}
+            ${addrHtml}
+            ${trackHtml}
+        </td>
+    </tr>`;
+}
+
 function renderOrderTable(orders) {
     const tbody = document.getElementById('order-list');
     if (orders.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">暂无订单</td></tr>`;
         return;
     }
-    tbody.innerHTML = orders.map(o => {
-        const isPaid = o.status === '已支付';
-        const quantity = o.quantity || 1;
-        const productName = o.product_name || '未知商品';
-        let ship = null;
-        try { ship = JSON.parse(o.shipping_info); } catch (e) {}
-        let addrHtml = '';
-        if (ship && ship.name) {
-            addrHtml = `
-            <div onclick="copyShippingAddress(this)" 
-                 data-name="${escapeHtml(ship.name)}" 
-                 data-tel="${escapeHtml(ship.tel)}" 
-                 data-addr="${escapeHtml(ship.addr)}"
-                 style="background:var(--bg-body); padding:10px; border-radius:var(--radius-md); margin-top:8px; font-size:12px; color:var(--text-secondary); cursor:pointer; border:1px dashed transparent; transition:var(--transition);"
-                 onmouseover="this.style.borderColor='var(--primary)'; this.style.background='var(--primary-light)';"
-                 onmouseout="this.style.borderColor='transparent'; this.style.background='var(--bg-body)';">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                    <div style="font-weight:500; color:var(--text-main);">
-                        👤 ${escapeHtml(ship.name)} &nbsp;&nbsp;📞 ${escapeHtml(ship.tel)}
-                    </div>
-                    <i class="ri-file-copy-line" style="color:var(--primary); font-size:14px;"></i>
-                </div>
-                <div style="line-height:1.4;">📍 ${escapeHtml(ship.addr)}</div>
-            </div>`;
-        }
-        const money = o.payment_method === 'USDT' ? `${o.usdt_amount} USDT` : `¥${o.cny_amount} CNY`;
-        const userContact = o.user_contact || '未知用户';
-        const userDisplay = o.user_display || userContact;
-        let action = '';
-        if (!isPaid && o.status !== '已取消' && o.status !== '已关闭') {
-            action += `
-                <button onclick="cancelOrderAdmin('${escapeHtml(o.order_id)}')"
-                        style="background:var(--danger); width:100%; margin-bottom:8px; font-size:12px; padding:6px 12px;">
-                    取消订单
-                </button>
-                <div style="font-size:11px; color:var(--text-muted); text-align:center; margin-bottom:8px;">在群内确认收款</div>`;
-        }
-        if (o.status === '已取消' || (o.status || '').includes('取消')) {
-            action += `<div style="color:var(--danger); font-size:12px; font-weight:500; margin-top:4px;"><i class="ri-close-circle-line"></i> 订单已取消</div>`;
-        }
-        if (!isPaid && o.payment_method !== 'USDT' && o.status !== '已取消') {
-            const qrPreviewHtml = o.qrcode_url
-                ? `<div style="margin-top:8px; position:relative; width:48px; height:48px; border-radius:4px; overflow:hidden; border:1px solid var(--border-color); cursor:pointer;"
-                        data-qrurl="${escapeHtml(o.qrcode_url)}" onclick="viewQrcode(this)">
-                        <img src="${escapeHtml(o.qrcode_url)}" style="width:100%; height:100%; object-fit:cover;">
-                   </div>`
-                : '';
-            action += `
-                <div style="margin-top:8px; border:1px solid var(--border-color); border-radius:var(--radius-md); padding:12px; background:var(--bg-body);">
-                    <div style="font-size:12px; font-weight:500; margin-bottom:8px; display:flex; justify-content:space-between;">
-                        <span>收款二维码</span>
-                        ${o.qrcode_url ? '<span style="color:var(--success);"><i class="ri-check-line"></i> 已传</span>' : ''}
-                    </div>
-                    <div style="display:flex; gap:8px;">
-                        <input type="file" id="qrcode-${escapeHtml(o.order_id)}" accept="image/*" style="display:none;"
-                               onchange="document.getElementById('btn-upload-${escapeHtml(o.order_id)}').click()">
-                        <button class="btn-secondary"
-                                onclick="document.getElementById('qrcode-${escapeHtml(o.order_id)}').click()"
-                                style="flex:1; font-size:12px; padding:6px;">上传</button>
-                        <button id="btn-upload-${escapeHtml(o.order_id)}"
-                                onclick="uploadQrcode('${escapeHtml(o.order_id)}', 'order')"
-                                style="display:none;"></button>
-                    </div>
-                    ${qrPreviewHtml}
-                </div>`;
-        }
-        const trackHtml = `
-            <div style="margin-top:8px; display:flex; gap:8px;">
-                <input id="track-${escapeHtml(o.order_id)}" value="${escapeHtml(o.tracking_number || '')}"
-                       placeholder="输入物流单号" style="font-size:12px; padding:6px 10px;">
-                <button class="btn-secondary" onclick="saveTrack('${escapeHtml(o.order_id)}')"
-                        style="padding:6px 12px; font-size:12px;">保存</button>
-            </div>`;
-        const sourceBadge = (o.source || '').includes('8888')
-            ? '<span class="tag" style="background:#fef3c7; color:#d97706;">龍哥</span>'
-            : '<span class="tag" style="background:#e0e7ff; color:#4f46e5;">Boss</span>';
-        const variantDisplay = o.variant_name
-            ? `<div style="color:var(--primary); font-size:11px; margin-top:2px;">规格: ${escapeHtml(o.variant_name)}</div>`
-            : '';
-        return `
-        <tr>
-            <td>
-                <div style="margin-bottom:6px;">${sourceBadge}</div>
-                <div style="font-weight:600; font-family:monospace; font-size:14px;">${escapeHtml(o.order_id)}</div>
-                <div style="color:var(--text-muted); font-size:11px; margin-top:4px;">${new Date(o.created_at).toLocaleString()}</div>
-            </td>
-            <td>
-                <div style="font-weight:500;">${escapeHtml(productName)}</div>
-                ${variantDisplay}
-                <div style="color:var(--text-secondary); font-size:12px; margin-top:4px;">数量: ${quantity}</div>
-                <div style="color:var(--text-main); font-weight:600; margin-top:4px;">${escapeHtml(money)}</div>
-            </td>
-            <td>
-                <div style="font-weight:500;">${escapeHtml(userDisplay)}</div>
-                <div style="color:var(--text-secondary); font-size:12px; margin-top:2px;">${escapeHtml(userContact)}</div>
-                <div style="color:var(--text-muted); font-size:11px; margin-top:4px; font-family:monospace;">UID: ${escapeHtml(String(o.user_id || '--'))}</div>
-            </td>
-            <td>
-                <div style="font-size:12px; font-weight:500; margin-bottom:6px;">${escapeHtml(o.payment_method || '')}</div>
-                <span class="tag ${isPaid ? 'paid' : 'wait'}">${escapeHtml(o.status)}</span>
-            </td>
-            <td style="min-width:220px;">
-                ${action}
-                ${addrHtml}
-                ${trackHtml}
-            </td>
-        </tr>`;
-    }).join('');
+    tbody.innerHTML = orders.map(o => renderSingleOrderRow(o)).join('');
 }
 function renderOrderPagination() {
     const pagination = document.getElementById('order-pagination');
@@ -1643,64 +1683,73 @@ async function loadUsersPage(page = 1, silent = false) {
         container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">网络错误</div>';
     }
 }
+function renderSingleUserHtml(user) {
+    const hasOrder = user.has_order;
+    const isLg = (user.source || '').includes('8888');
+    const sourceBadge = isLg
+        ? '<span class="tag" style="background:#fef3c7; color:#d97706; padding:0 6px;">龍哥</span>'
+        : '<span class="tag" style="background:#e0e7ff; color:#4f46e5; padding:0 6px;">Boss</span>';
+    return `
+    <div class="user-item" style="flex-direction:column; gap:12px;" id="user-row-${escapeHtml(String(user.id))}">
+        <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+            <div style="font-weight:600; font-size:15px; display:flex; align-items:center; gap:8px;">
+                ${sourceBadge}
+                <span style="word-break:break-all;">${escapeHtml(user.contact || '未知用户')}</span>
+            </div>
+            ${hasOrder
+                ? '<span class="tag paid"    style="font-size:10px; padding:0 6px; white-space:nowrap;">有订单</span>'
+                : '<span class="tag cancelled" style="font-size:10px; padding:0 6px; white-space:nowrap;">无订单</span>'}
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:12px; color:var(--text-secondary); width:100%;">
+            <div style="background:var(--bg-body); padding:4px 8px; border-radius:4px; display:flex; align-items:center; gap:4px;">
+                <i class="ri-id-card-line"></i> ${escapeHtml(String(user.id))}
+            </div>
+            ${user.invite_code ? `<div style="background:#eff6ff; color:#2563eb; padding:4px 8px; border-radius:4px; display:flex; align-items:center; gap:4px;"><i class="ri-qr-code-line"></i> ${escapeHtml(user.invite_code)}</div>` : ''}
+            ${user.invited_by  ? `<div style="background:#fff7ed; color:#ea580c; padding:4px 8px; border-radius:4px; display:flex; align-items:center; gap:4px;"><i class="ri-group-line"></i> ${escapeHtml(user.invited_by)}</div>` : ''}
+        </div>
+        <div style="display:flex; justify-content:space-between; width:100%; align-items:flex-end;">
+            <div>
+                <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">
+                    注册时间: ${new Date(user.created_at).toLocaleString()}
+                </div>
+                <div style="font-family:monospace; font-size:14px;">
+                    <span style="color:var(--text-muted); font-family:inherit;">余额:</span>
+                    <span style="color:var(--success); font-weight:700; font-size:18px;">${parseFloat(user.balance || 0).toFixed(2)}</span>
+                    <span style="font-size:12px; color:var(--text-secondary);">USDT</span>
+                </div>
+            </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; width:100%; margin-top:4px;">
+            <button class="btn-secondary" onclick="editBalance('${escapeHtml(String(user.id))}')"
+                    style="padding:8px 0; font-size:13px; color:var(--primary); border-color:var(--border-focus); width:100%; justify-content:center;">
+                <i class="ri-wallet-3-line"></i> 余额
+            </button>
+            <button class="btn-secondary" onclick="initiateChat('${escapeHtml(String(user.id))}')"
+                    style="padding:8px 0; font-size:13px; width:100%; justify-content:center;">
+                <i class="ri-message-3-line"></i> 聊天
+            </button>
+            <button class="btn-secondary" onclick="delUser('${escapeHtml(String(user.id))}')"
+                    style="padding:8px 0; font-size:13px; color:var(--danger); border-color:#fecaca; width:100%; justify-content:center;">
+                <i class="ri-delete-bin-line"></i> 删除
+            </button>
+        </div>
+    </div>`;
+}
+
 function renderUserList(users) {
-    const container = document.getElementById('user-list');
-    if (users.length === 0) {
-        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">无匹配用户</div>';
-        return;
-    }
-    container.innerHTML = users.map(user => {
-        const hasOrder = user.has_order;
-        const isLg = (user.source || '').includes('8888');
-        const sourceBadge = isLg
-            ? '<span class="tag" style="background:#fef3c7; color:#d97706; padding:0 6px;">龍哥</span>'
-            : '<span class="tag" style="background:#e0e7ff; color:#4f46e5; padding:0 6px;">Boss</span>';
-        return `
-        <div class="user-item" style="flex-direction:column; gap:12px;">
-            <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
-                <div style="font-weight:600; font-size:15px; display:flex; align-items:center; gap:8px;">
-                    ${sourceBadge}
-                    <span style="word-break:break-all;">${escapeHtml(user.contact || '未知用户')}</span>
-                </div>
-                ${hasOrder
-                    ? '<span class="tag paid"    style="font-size:10px; padding:0 6px; white-space:nowrap;">有订单</span>'
-                    : '<span class="tag cancelled" style="font-size:10px; padding:0 6px; white-space:nowrap;">无订单</span>'}
-            </div>
-            <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:12px; color:var(--text-secondary); width:100%;">
-                <div style="background:var(--bg-body); padding:4px 8px; border-radius:4px; display:flex; align-items:center; gap:4px;">
-                    <i class="ri-id-card-line"></i> ${escapeHtml(String(user.id))}
-                </div>
-                ${user.invite_code ? `<div style="background:#eff6ff; color:#2563eb; padding:4px 8px; border-radius:4px; display:flex; align-items:center; gap:4px;"><i class="ri-qr-code-line"></i> ${escapeHtml(user.invite_code)}</div>` : ''}
-                ${user.invited_by  ? `<div style="background:#fff7ed; color:#ea580c; padding:4px 8px; border-radius:4px; display:flex; align-items:center; gap:4px;"><i class="ri-group-line"></i> ${escapeHtml(user.invited_by)}</div>` : ''}
-            </div>
-            <div style="display:flex; justify-content:space-between; width:100%; align-items:flex-end;">
-                <div>
-                    <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">
-                        注册时间: ${new Date(user.created_at).toLocaleString()}
-                    </div>
-                    <div style="font-family:monospace; font-size:14px;">
-                        <span style="color:var(--text-muted); font-family:inherit;">余额:</span>
-                        <span style="color:var(--success); font-weight:700; font-size:18px;">${parseFloat(user.balance || 0).toFixed(2)}</span>
-                        <span style="font-size:12px; color:var(--text-secondary);">USDT</span>
-                    </div>
-                </div>
-            </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; width:100%; margin-top:4px;">
-                <button class="btn-secondary" onclick="editBalance('${escapeHtml(String(user.id))}')"
-                        style="padding:8px 0; font-size:13px; color:var(--primary); border-color:var(--border-focus); width:100%; justify-content:center;">
-                    <i class="ri-wallet-3-line"></i> 余额
-                </button>
-                <button class="btn-secondary" onclick="initiateChat('${escapeHtml(String(user.id))}')"
-                        style="padding:8px 0; font-size:13px; width:100%; justify-content:center;">
-                    <i class="ri-message-3-line"></i> 聊天
-                </button>
-                <button class="btn-secondary" onclick="delUser('${escapeHtml(String(user.id))}')"
-                        style="padding:8px 0; font-size:13px; color:var(--danger); border-color:#fecaca; width:100%; justify-content:center;">
-                    <i class="ri-delete-bin-line"></i> 删除
-                </button>
-            </div>
-        </div>`;
-    }).join('');
+
+    const container = document.getElementById('user-list');
+
+    if (users.length === 0) {
+
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">无匹配用户</div>';
+
+        return;
+
+    }
+
+    container.innerHTML = users.map(user => renderSingleUserHtml(user)).join('');
+
 }
 function renderUserPagination() {
     let paginationDiv = document.getElementById('user-pagination');
@@ -1790,8 +1839,22 @@ async function editBalance(uid) {
                 body: JSON.stringify({ userId: uid, ...formValues }),
             });
             const d = await res.json();
-            if (d.success) { Swal.fire({ icon: 'success', title: '操作成功', timer: 1500, showConfirmButton: false }); loadUsersPage(userCurrentPage, true); }
-            else Swal.fire('失败', d.msg, 'error');
+            if (d.success) {
+                Swal.fire({ icon: 'success', title: '操作成功', timer: 1500, showConfirmButton: false });
+                const btn = document.querySelector(`button[onclick="editBalance('${escapeHtml(String(uid))}')"]`);
+                if (btn) {
+                    const balanceSpan = btn.closest('.user-item').querySelector('span[style*="font-size:18px"]');
+                    if (balanceSpan) {
+                        let curBal = parseFloat(balanceSpan.innerText) || 0;
+                        let amt = parseFloat(formValues.amount);
+                        if (formValues.type === 'add') curBal += amt;
+                        else if (formValues.type === 'subtract') curBal = Math.max(0, curBal - amt);
+                        else if (formValues.type === 'set') curBal = amt;
+                        balanceSpan.innerText = curBal.toFixed(2);
+                    }
+                }
+            }
+            else Swal.fire('失败', d.msg, 'error');
         } catch (e) { Swal.fire('错误', '请求失败', 'error'); }
     }
 }
@@ -2059,15 +2122,23 @@ function resetProdForm() {
 function renderVariants() {
     const container = document.getElementById('p-variants-list');
     container.innerHTML = tempVariants.map((v, i) => `
-        <div style="display:flex; gap:8px; align-items:center;">
-            <input placeholder="规格名称" value="${escapeHtml(v.name)}"
-                   oninput="tempVariants[${i}].name = this.value" style="flex:1;">
-            <input placeholder="价格" type="number" step="0.01" value="${escapeHtml(String(v.price))}"
-                   oninput="tempVariants[${i}].price = this.value" style="flex:1;">
-            <button class="action-btn" style="color:var(--danger);"
-                    onclick="tempVariants.splice(${i}, 1); renderVariants();">
-                <i class="ri-delete-bin-line"></i>
-            </button>
+        <div style="background: var(--bg-body); padding: 12px; border-radius: var(--radius-md); margin-bottom: 8px; border: 1px solid var(--border-color);">
+            <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end;">
+                <div>
+                    <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">规格名称</label>
+                    <input placeholder="例: 红色-L" value="${escapeHtml(v.name)}"
+                           oninput="tempVariants[${i}].name = this.value" style="width:100%; padding: 8px 10px;">
+                </div>
+                <div>
+                    <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">价格 (USDT)</label>
+                    <input placeholder="0.00" type="number" step="0.01" value="${escapeHtml(String(v.price))}"
+                           oninput="tempVariants[${i}].price = this.value" style="width:100%; padding: 8px 10px;">
+                </div>
+                <button class="action-btn" style="color: var(--danger); border-color: #fecaca; padding: 8px 12px; height: 38px;"
+                        onclick="tempVariants.splice(${i}, 1); renderVariants();">
+                    <i class="ri-delete-bin-line"></i>
+                </button>
+            </div>
         </div>`).join('');
 }
  
@@ -2159,18 +2230,20 @@ async function renderHotProdList() {
                 imgHtml = `<img src="${escapeHtml(firstImg)}" style="width:40px; height:40px; object-fit:cover; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-right:12px;">`;
             }
 
-            return `
-            <div style="display:flex; align-items:center; padding:12px; border:1px solid var(--border-color); border-radius:var(--radius-md); background:#fff; transition:var(--transition);">
-                <input type="checkbox" class="hot-prod-checkbox" value="${escapeHtml(String(p.id))}" style="width:16px; height:16px; margin:0; margin-right:12px; box-shadow:none;">
-                ${imgHtml}
-                <div style="flex:1; min-width:0;">
-                    <div style="font-weight:600; font-size:14px; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(p.name)}</div>
-                    <div style="font-size:12px; color:var(--success); font-weight:600; margin-top:4px;">${escapeHtml(String(p.price))} USDT</div>
-                </div>
-                <button class="btn-secondary" onclick="executeHotProd(['${escapeHtml(String(p.id))}'], false)" style="padding:6px 12px; font-size:12px; color:var(--danger); border-color:#fecaca; margin-left:12px;">
-                    取消热销
-                </button>
-            </div>`;
+           return `
+            <div style="display:flex; align-items:center; flex-wrap: wrap; gap: 10px; padding:14px 12px; border:1px solid var(--border-color); border-radius:var(--radius-md); background:#fff; transition:var(--transition);">
+                <div style="display:flex; align-items:center; gap:12px; flex: 2 1 180px; min-width: 180px;">
+                    <input type="checkbox" class="hot-prod-checkbox" value="${escapeHtml(String(p.id))}" style="width:16px; height:16px; margin:0; box-shadow:none; flex-shrink:0;">
+                    ${imgHtml}
+                    <div style="min-width:0; flex:1;">
+                        <div style="font-weight:600; font-size:14px; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(p.name)}</div>
+                        <div style="font-size:12px; color:var(--success); font-weight:600; margin-top:4px;">${escapeHtml(String(p.price))} USDT</div>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="executeHotProd(['${escapeHtml(String(p.id))}'], false)" style="padding:6px 14px; font-size:12px; color:var(--danger); border-color:#fecaca; margin-left:auto; white-space: nowrap;">
+                    取消热销
+                </button>
+            </div>`;
         }).join('');
     } catch (e) {
         container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">加载失败，请检查网络</div>';
@@ -2793,9 +2866,9 @@ function renderChatMessagesFromData(messages, sessionId) {
         }
         const isImage = m.msg_type === 'image' || (typeof m.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(m.content)) || (typeof m.content === 'string' && m.content.includes('cloudinary.com'));
         let contentHtml;
-        if (isImage) {
+       if (isImage) {
             const safeUrl = escapeHtml(m.content);
-            contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="window.open('${safeUrl}')">`;
+            contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="viewImageFullscreen('${safeUrl}')">`;
         } else {
             contentHtml = escapeHtml(m.content);
         }
@@ -2834,7 +2907,7 @@ function appendChatMessages(messages, prepend = false) {
         let contentHtml;
         if (isImage) {
             const safeUrl = escapeHtml(m.content);
-            contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="window.open('${safeUrl}')">`;
+            contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="viewImageFullscreen('${safeUrl}')">`;
         } else {
             contentHtml = escapeHtml(m.content);
         }
@@ -3172,40 +3245,92 @@ if (adminToken) {
 }
  
 socket.on('admin_update', (data) => {
-    const activePage = document.querySelector('.page.active');
-    if (!activePage) return;
-    if (activePage.id === 'chat') return;
-    if (data.type === 'order' || data.type === 'user' || data.type === 'funds') {
-        const checkedIds = Array.from(document.querySelectorAll('.prod-checkbox:checked, .hot-prod-checkbox:checked')).map(cb => cb.value);
-        if (activePage.id === 'order') {
-            loadOrdersPage(orderCurrentPage, true).then(() => {
-               checkedIds.forEach(id => { const cb = document.querySelector(`.prod-checkbox[value="${id}"]`); if(cb) cb.checked = true; });
-            });
-        }
-        else if (activePage.id === 'users') loadUsersPage(userCurrentPage, true);
-        else if (activePage.id === 'funds') loadBalanceLogs(fundCurrentPage, true);
-        else if (activePage.id === 'dash') refresh(true);
-    } else if (activePage.id === 'dash') {
-        refresh(true);
-    }
+    const activePage = document.querySelector('.page.active');
+    if (activePage && activePage.id === 'dash') {
+        refresh(true);
+    }
+
+    if (data.type === 'order' && data.payload) {
+        const tbody = document.getElementById('order-list');
+        if (tbody) {
+            const existingRow = document.getElementById(`order-row-${data.payload.order_id}`);
+            if (existingRow) {
+                const tempBody = document.createElement('tbody');
+                tempBody.innerHTML = renderSingleOrderRow(data.payload);
+                existingRow.replaceWith(tempBody.firstElementChild);
+            } else if (orderCurrentPage === 1 && !orderSearchTerm) {
+                if (tbody.innerHTML.includes('暂无订单')) tbody.innerHTML = '';
+                tbody.insertAdjacentHTML('afterbegin', renderSingleOrderRow(data.payload));
+                if (tbody.children.length > ordersPerPage) tbody.removeChild(tbody.lastElementChild);
+            }
+        }
+    } 
+    else if (data.type === 'user_add' && data.payload) {
+        const userList = document.getElementById('user-list');
+        if (userList && userCurrentPage === 1 && !userSearchTerm) {
+            if (userList.innerHTML.includes('无匹配用户')) userList.innerHTML = '';
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = renderSingleUserHtml(data.payload);
+            userList.insertAdjacentElement('afterbegin', tempDiv.firstElementChild);
+            
+            if (userList.children.length > USERS_PER_PAGE) userList.removeChild(userList.lastElementChild);
+            const countEl = document.getElementById('user-count');
+            if (countEl) countEl.innerText = parseInt(countEl.innerText) + 1;
+        }
+    }
+    else if (data.type === 'user_balance' && data.payload) {
+        const btn = document.querySelector(`button[onclick="editBalance('${escapeHtml(String(data.payload.userId))}')"]`);
+        if (btn) {
+            const balanceSpan = btn.closest('.user-item').querySelector('span[style*="font-size:18px"]');
+            if (balanceSpan) balanceSpan.innerText = parseFloat(data.payload.balance).toFixed(2);
+        }
+    }
+    else if (data.type === 'funds' && data.payload) {
+        const tbody = document.getElementById('fund-list');
+        const uidInput = document.getElementById('fund-user-search');
+        const isUidMatch = !uidInput || !uidInput.value || String(data.payload.user_id) === String(uidInput.value);
+        
+        if (tbody && fundCurrentPage === 1 && isUidMatch) {
+            if (tbody.innerHTML.includes('暂无资金流水')) tbody.innerHTML = '';
+            const amount = parseFloat(data.payload.amount);
+            const isPlus = amount > 0;
+            const color  = isPlus ? 'var(--success)' : 'var(--danger)';
+            const sign   = isPlus ? '+' : '';
+            const rowHtml = `
+            <tr>
+                <td style="color:var(--text-muted); font-size:12px;">${new Date(data.payload.created_at).toLocaleString()}</td>
+                <td>
+                    <div style="font-weight:500;">${escapeHtml(data.payload.contact || '未知')}</div>
+                    <div style="font-size:11px; color:var(--text-muted); font-family:monospace; margin-top:4px;">${escapeHtml(String(data.payload.user_id))}</div>
+                </td>
+                <td><span class="tag" style="background:var(--bg-body); color:var(--text-secondary);">${escapeHtml(data.payload.type)}</span></td>
+                <td>
+                    <div style="color:${color}; font-weight:700; font-family:monospace;">${sign}${amount}</div>
+                    ${data.payload.balance_after ? `<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">余: ${parseFloat(data.payload.balance_after)}</div>` : ''}
+                </td>
+                <td style="color:var(--text-secondary); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+                    title="${escapeHtml(data.payload.remark || '')}">${escapeHtml(data.payload.remark || '')}</td>
+            </tr>`;
+            tbody.insertAdjacentHTML('afterbegin', rowHtml);
+            if (tbody.children.length > FUND_PER_PAGE) tbody.removeChild(tbody.lastElementChild);
+        }
+    }
 });
+
+// 管理员无需在 order_update（针对用户的事件）中重新刷新全表
 socket.on('order_update', () => {
     const activePage = document.querySelector('.page.active');
-    if (activePage && activePage.id === 'order') {
-        loadOrdersPage(orderCurrentPage, true);
-    } else if (activePage && activePage.id === 'dash') {
+    if (activePage && activePage.id === 'dash') {
         refresh(true);
     }
 });
-socket.on('global_update', () => {
-    const activePage = document.querySelector('.page.active');
-    if (activePage && activePage.id === 'prod') {
-        loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
-    } else if (activePage && activePage.id === 'hire') {
-        loadHireList(true);
-    } else if (activePage && activePage.id === 'dash') {
-        refresh(true);
-    }
+
+// 监听来自服务端的其他管理用户被删掉的事件实现真正的热更
+socket.on('admin_user_deleted', (userId) => {
+    const userRow = document.getElementById(`user-row-${escapeHtml(String(userId))}`);
+    if (userRow) userRow.remove();
+    const countEl = document.getElementById('user-count');
+    if (countEl && parseInt(countEl.innerText) > 0) countEl.innerText = parseInt(countEl.innerText) - 1;
 });
  
 socket.on('admin_chat_read', (data) => {
@@ -3255,6 +3380,9 @@ socket.on('message_recalled', (data) => {
 });
  
 socket.on('new_message', (data) => {
+    // 兼容处理：确保 session_id 存在，防止新用户消息因后端字段名不一致(sessionId)导致崩溃，从而阻断通知弹窗
+    data.session_id = data.session_id || data.sessionId;
+
     if (document.querySelector(`[data-msgid="${data.id}"]`)) return;
     // 更新内存缓存（用于会话列表预览）
     if (!curData.chats) curData.chats = {};
@@ -3287,11 +3415,11 @@ if (chatMessageCache[data.session_id] && chatMessageCache[data.session_id].messa
                 const isImage = data.msg_type === 'image' || (typeof data.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(data.content)) || (typeof data.content === 'string' && data.content.includes('cloudinary.com'));
                 let contentHtml;
                 if (isImage) {
-                    const safeUrl = escapeHtml(data.content);
-                    contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="window.open('${safeUrl}')">`;
-                } else {
-                    contentHtml = escapeHtml(data.content || '');
-                }
+            const safeUrl = escapeHtml(data.content);
+            contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="viewImageFullscreen('${safeUrl}')">`;
+        } else {
+            contentHtml = escapeHtml(data.content || '');
+        }
                 const div = document.createElement('div');
                 div.className = `msg-row ${isMe ? 'admin' : 'user'}`;
                 div.innerHTML = `
@@ -3387,6 +3515,87 @@ function updateChatItemPreview(sessionId, lastMessage) {
     parent.insertBefore(chatItem, parent.firstChild);
 }
  
+function sortProductsList(list) {
+    return list.sort((a, b) => {
+        if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+        if (a.is_hot !== b.is_hot) return a.is_hot ? -1 : 1;
+        if (a.is_hot && b.is_hot) {
+            const tA = a.hot_time ? new Date(a.hot_time).getTime() : 0;
+            const tB = b.hot_time ? new Date(b.hot_time).getTime() : 0;
+            if (tA !== tB) return tA - tB;
+        }
+        return Number(b.id) - Number(a.id);
+    });
+}
+
+socket.on('product_added', (prod) => {
+    if (curData.products) {
+        curData.products.push(prod);
+        sortProductsList(curData.products);
+        if (document.getElementById('prod').classList.contains('active')) {
+            renderProductListContent(curData.products);
+        }
+    }
+});
+
+socket.on('product_updated', (prod) => {
+    if (curData.products) {
+        const idx = curData.products.findIndex(p => String(p.id) === String(prod.id));
+        if (idx !== -1) {
+            curData.products[idx] = { ...curData.products[idx], ...prod };
+            sortProductsList(curData.products);
+            if (document.getElementById('prod').classList.contains('active')) {
+                renderProductListContent(curData.products);
+            }
+        }
+    }
+});
+
+socket.on('product_deleted', (id) => {
+    if (curData.products) {
+        curData.products = curData.products.filter(p => String(p.id) !== String(id));
+        if (document.getElementById('prod').classList.contains('active')) {
+            renderProductListContent(curData.products);
+        }
+    }
+});
+
+socket.on('product_patched', (data) => {
+    if (curData.products) {
+        const idx = curData.products.findIndex(p => String(p.id) === String(data.id));
+        if (idx !== -1) {
+            curData.products[idx].is_pinned = data.is_pinned;
+            sortProductsList(curData.products);
+            if (document.getElementById('prod').classList.contains('active')) {
+                renderProductListContent(curData.products);
+            }
+        }
+    }
+});
+
+socket.on('products_hot_changed', (data) => {
+    if (curData.products) {
+        data.ids.forEach(id => {
+            const idx = curData.products.findIndex(p => String(p.id) === String(id));
+            if (idx !== -1) {
+                curData.products[idx].is_hot = data.is_hot;
+                if (data.is_hot) curData.products[idx].hot_time = new Date().toISOString(); 
+            }
+        });
+        sortProductsList(curData.products);
+        if (document.getElementById('prod').classList.contains('active')) {
+            renderProductListContent(curData.products);
+        }
+    }
+});
+
+socket.on('hiring_updated', (data) => {
+    curData.hiring = data;
+    if (document.getElementById('hire').classList.contains('active')) {
+        renderHireList(data);
+    }
+});
+
 /* ================================================================
    ⑲ 键盘快捷键 & 路由
 ================================================================ */
