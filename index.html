@@ -858,6 +858,8 @@
                 <h2 style="margin:0;"><i class="ri-drag-move-2-line"></i> 分类排序</h2>
                 <button onclick="closeCatSortModal()" class="btn-soft" style="padding:4px; border-radius:50%;"><i class="ri-close-line" style="font-size:20px;"></i></button>
             </div>
+            <select id="sort-target-select" onchange="renderCategorySort()" style="width:100%; margin-bottom: 12px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+            </select>
             <div id="cat-sort-list" class="sortable-list" style="max-height:40vh; overflow-y:auto;"></div>
             <div style="margin-top:16px; color:var(--text-muted); font-size:12px;">上下拖动列表项进行排序。</div>
             <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:24px;">
@@ -1916,14 +1918,28 @@ async function loadProductsPage(page = 1, category = currentProductCategoryFilte
             return;
         }
         const data = await res.json();
-               if (data.success) {
-            currentProductPage = page;
-            totalProductPages = data.totalPages;
-            cachedProductCategories = data.categories || [];
-            curData.products = data.products;
-            renderProductListContent(data.products);
-            renderProductPagination();
-        } else {
+                if (data.success) {
+                    currentProductPage = page;
+                    totalProductPages = data.totalPages;
+                    cachedProductCategories = data.categories || [];
+                    const oldPriorities = {};
+                    if (curData.products) {
+                        curData.products.forEach(p => {
+                            if (p.sub_category && p._sub_priority !== undefined) {
+                                oldPriorities[p.category + '_' + p.sub_category] = p._sub_priority;
+                            }
+                        });
+                    }
+                    data.products.forEach(p => {
+                        const key = p.category + '_' + p.sub_category;
+                        if (oldPriorities[key] !== undefined) {
+                            p._sub_priority = oldPriorities[key];
+                        }
+                    });
+                    curData.products = data.products;
+                    renderProductListContent(data.products);
+                    renderProductPagination();
+                } else {
             container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">加载失败，请重试</div>';
         }
     } catch (e) {
@@ -2040,43 +2056,91 @@ const switchCatFilter = switchProductCategory;
  
 function renderCategorySort() {
     const container = document.getElementById('cat-sort-list');
+if (!container) return; // 如果 DOM 还没准备好，直接跳出，不执行后续逻辑
+    const select = document.getElementById('sort-target-select');
+
+    // 核心修复：在清空任何内容前，先彻底销毁旧实例并置空
+    if (sortableInstance) {
+        sortableInstance.destroy();
+        sortableInstance = null;
+    }
+
     if (!cachedProductCategories || cachedProductCategories.length === 0) return;
-    container.innerHTML = cachedProductCategories.map(cat => `
-        <div class="sortable-item" data-cat="${escapeHtml(cat)}">
+    
+    if (select.options.length === 0) {
+        let optionsHtml = '<option value="main">🌟 排序主分类</option>';
+        cachedProductCategories.forEach(cat => {
+            optionsHtml += `<option value="${escapeHtml(cat)}">📁 排序 [${escapeHtml(cat)}] 的二级分类</option>`;
+        });
+        select.innerHTML = optionsHtml;
+    }
+    
+    const target = select.value;
+    let listToSort = [];
+    if (target === 'main') {
+        listToSort = cachedProductCategories;
+    } else {
+        listToSort = [...new Set((curData.products || []).filter(p => p.category === target && p.sub_category).map(p => p.sub_category))];
+    }
+
+    if (listToSort.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">暂无可排序的项目</div>';
+        return;
+    }
+
+    container.innerHTML = listToSort.map(item => `
+        <div class="sortable-item" data-cat="${escapeHtml(item)}">
             <i class="ri-drag-move-2-line drag-handle"></i>
-            <span>${escapeHtml(cat)}</span>
+            <span>${escapeHtml(item)}</span>
         </div>`).join('');
-    if (sortableInstance) sortableInstance.destroy();
-    sortableInstance = new Sortable(container, { animation: 200, ghostClass: 'sortable-ghost' });
+
+    // 重新初始化，并明确指定 handle 以防止点击文字误触发
+    sortableInstance = new Sortable(container, { 
+        animation: 200, 
+        ghostClass: 'sortable-ghost',
+        handle: '.drag-handle' 
+    });
 }
  
-function openCatSortModal()  { renderCategorySort(); document.getElementById('cat-sort-modal').style.display = 'flex'; }
+function openCatSortModal()  { document.getElementById('sort-target-select').innerHTML = ''; renderCategorySort(); document.getElementById('cat-sort-modal').style.display = 'flex'; }
 function closeCatSortModal() { document.getElementById('cat-sort-modal').style.display = 'none'; }
  
 async function saveCategorySort(btn) {
-    const items = document.querySelectorAll('#cat-sort-list .sortable-item');
-    if (!items.length) return;
-    const originalHTML = btn.innerHTML;
-    btn.disabled = true; btn.innerHTML = '<div class="loader"></div> 保存中...';
-    try {
-        const total = items.length;
-        const promises = Array.from(items).map((item, index) => {
-            const catName  = item.getAttribute('data-cat');
-            const priority = (total - index) * 100;
-            return fetch(`${API_BASE}/api/admin/category/priority`, {
-                method: 'POST', headers: getAuthHeaders(),
-                body: JSON.stringify({ name: catName, priority }),
-            }).then(r => r.json());
-        });
-        await Promise.all(promises);
-        showNotification('成功', '分类排序已保存', 'success');
-        closeCatSortModal();
-        loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
-    } catch (e) {
-        showNotification('错误', '保存失败', 'danger');
-    } finally {
-        btn.disabled = false; btn.innerHTML = originalHTML;
-    }
+    const items = document.querySelectorAll('#cat-sort-list .sortable-item');
+    if (!items.length) return;
+    const target = document.getElementById('sort-target-select').value;
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<div class="loader"></div> 保存中...';
+    try {
+        const sortedNames = Array.from(items).map(item => item.getAttribute('data-cat'));
+        const total = sortedNames.length;
+        const payloadItems = sortedNames.map((catName, index) => ({
+            name: catName,
+            priority: (total - index) * 100,
+            parent: target === 'main' ? null : target
+        }));
+        await fetch(`${API_BASE}/api/admin/category/priority/batch`, {
+            method: 'POST', headers: getAuthHeaders(),
+            body: JSON.stringify({ target, sortedNames, items: payloadItems }),
+        }).then(r => r.json());
+
+        if (target === 'main') {
+            cachedProductCategories = sortedNames;
+        } else {
+            curData.products.forEach(p => {
+                if (p.category === target && sortedNames.includes(p.sub_category)) {
+                    p._sub_priority = (total - sortedNames.indexOf(p.sub_category)) * 100;
+                }
+            });
+        }
+        showNotification('成功', '排序已同步', 'success');
+        closeCatSortModal();
+        renderProductListContent(curData.products);
+    } catch (e) {
+        showNotification('错误', '保存失败', 'danger');
+    } finally {
+        btn.disabled = false; btn.innerHTML = originalHTML;
+    }
 }
  
 function openProdModal()  { resetProdForm(); document.getElementById('prod-modal').style.display = 'flex'; }
@@ -2097,20 +2161,28 @@ function updateCatSelect(selected = '', selectedSub = '') {
 }
 
 function updateSubCatSelect(selectedSub = '') {
-    const mainCat = document.getElementById('p-cat-select').value;
-    const sel = document.getElementById('p-subcat-select');
-    const input = document.getElementById('p-subcat-new');
-    let subs = [];
-    if (mainCat && mainCat !== '__NEW__' && curData?.products) {
-        subs = [...new Set(curData.products.filter(p => p.category === mainCat && p.sub_category).map(p => p.sub_category))];
-    }
-    let html = '<option value="">无二级分类</option>';
-    subs.forEach(s => { html += `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`; });
-    html += '<option value="__NEW__" style="color:var(--primary); font-weight:600;">+ 创建新二级分类...</option>';
-    sel.innerHTML = html;
-    if (selectedSub && subs.includes(selectedSub)) { sel.value = selectedSub; input.style.display = 'none'; input.value = ''; }
-    else if (selectedSub) { sel.value = '__NEW__'; input.style.display = 'block'; input.value = selectedSub; }
-    else { sel.value = ''; input.style.display = 'none'; input.value = ''; }
+    const mainCat = document.getElementById('p-cat-select').value;
+    const sel = document.getElementById('p-subcat-select');
+    const input = document.getElementById('p-subcat-new');
+    let subs = [];
+    if (mainCat && mainCat !== '__NEW__' && curData?.products) {
+        const subCatMap = new Map();
+        curData.products.forEach(p => {
+            if (p.category === mainCat && p.sub_category) {
+                if (!subCatMap.has(p.sub_category) || (p._sub_priority !== undefined && p._sub_priority > (subCatMap.get(p.sub_category) || 0))) {
+                    subCatMap.set(p.sub_category, p._sub_priority || 0);
+                }
+            }
+        });
+        subs = Array.from(subCatMap.keys()).sort((a, b) => subCatMap.get(b) - subCatMap.get(a));
+    }
+    let html = '<option value="">无二级分类</option>';
+    subs.forEach(s => { html += `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`; });
+    html += '<option value="__NEW__" style="color:var(--primary); font-weight:600;">+ 创建新二级分类...</option>';
+    sel.innerHTML = html;
+    if (selectedSub && subs.includes(selectedSub)) { sel.value = selectedSub; input.style.display = 'none'; input.value = ''; }
+    else if (selectedSub) { sel.value = '__NEW__'; input.style.display = 'block'; input.value = selectedSub; }
+    else { sel.value = ''; input.style.display = 'none'; input.value = ''; }
 }
  
 function editProd(pid) {
@@ -2341,7 +2413,15 @@ async function batchSetSubCategory() {
             window.updateBatchSubTips = (mainVal) => {
                 const tipsBox = document.getElementById('existing-subs-tips');
                 const subInput = document.getElementById('batch-sub-cat');
-                const existingSubs = [...new Set(curData.products.filter(p => p.category === mainVal && p.sub_category).map(p => p.sub_category))];
+                const subCatMap = new Map();
+                curData.products.forEach(p => {
+                    if (p.category === mainVal && p.sub_category) {
+                        if (!subCatMap.has(p.sub_category) || (p._sub_priority !== undefined && p._sub_priority > (subCatMap.get(p.sub_category) || 0))) {
+                            subCatMap.set(p.sub_category, p._sub_priority || 0);
+                        }
+                    }
+                });
+                const existingSubs = Array.from(subCatMap.keys()).sort((a, b) => subCatMap.get(b) - subCatMap.get(a));
                 tipsBox.innerHTML = existingSubs.map(s => `<span class="tag" style="cursor:pointer; background:var(--primary-light); color:var(--primary);" onclick="document.getElementById('batch-sub-cat').value='${s}'">${s}</span>`).join('');
             };
             window.updateBatchSubTips(document.getElementById('batch-main-cat').value);
@@ -3716,6 +3796,24 @@ socket.on('hiring_updated', (data) => {
     if (document.getElementById('hire').classList.contains('active')) {
         renderHireList(data);
     }
+});
+socket.on('global_update', (data) => {
+    if (data.type === 'category_sort') {
+        if (data.target === 'main') {
+            cachedProductCategories = data.sortedNames;
+        } else if (curData.products) {
+            const total = data.sortedNames.length;
+            curData.products.forEach(p => {
+                if (p.category === data.target && data.sortedNames.includes(p.sub_category)) {
+                    p._sub_priority = (total - data.sortedNames.indexOf(p.sub_category)) * 100;
+                }
+            });
+        }
+        // 仅重绘画布，不发网络请求
+        if (document.getElementById('prod').classList.contains('active')) {
+            renderProductListContent(curData.products);
+        }
+    }
 });
 
 /* ================================================================
