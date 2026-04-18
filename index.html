@@ -805,18 +805,30 @@
                         <option value="physical">实物商品</option>
                     </select>
                 </div>
-                <div class="form-group" style="grid-column:1 / -1;">
-                    <label>分类</label>
-                    <select id="p-cat-select" onchange="if(this.value==='__NEW__'){document.getElementById('p-cat-new').style.display='block';}else{document.getElementById('p-cat-new').style.display='none';}"></select>
-                    <input id="p-cat-new" placeholder="请输入新分类名称..." style="display:none; margin-top:8px;">
+                <div style="grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: var(--bg-body); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="color: var(--primary); font-weight: 700;">主分类</label>
+                        <select id="p-cat-select" onchange="if(this.value==='__NEW__'){document.getElementById('p-cat-new').style.display='block';}else{document.getElementById('p-cat-new').style.display='none'; updateSubCatSelect();}"></select>
+                        <input id="p-cat-new" placeholder="新分类名称..." style="display:none; margin-top:8px; height: 35px; font-size: 12px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="color: var(--primary); font-weight: 700;">二级分类 (选填)</label>
+                        <select id="p-subcat-select" onchange="if(this.value==='__NEW__'){document.getElementById('p-subcat-new').style.display='block';}else{document.getElementById('p-subcat-new').style.display='none';}"></select>
+                        <input id="p-subcat-new" placeholder="新二级分类名称..." style="display:none; margin-top:8px; height: 35px; font-size: 12px;">
+                    </div>
                 </div>
-                <div class="form-group" style="grid-column:1 / -1;">
+                <div class="form-group" style="grid-column:1 / -1;">
                     <label>商品图片 (支持多张)</label>
-                    <div class="file-upload">
-                        <input type="file" id="p-file" onchange="uploadImg(this)" accept="image/png,image/jpeg,image/gif,image/webp,image/jpg">
-                        <div class="file-upload-label">
-                            <i class="ri-upload-cloud-2-line" style="font-size:20px;"></i>
-                            <span>点击上传图片</span>
+                   <div class="file-upload" 
+                         id="drop-zone"
+                         onsubmit="return false;"
+                         ondragover="event.preventDefault(); this.style.borderColor='var(--primary)'; this.style.background='var(--primary-light)';" 
+                         ondragleave="this.style.borderColor='#9ca3af'; this.style.background='#ffffff';"
+                         ondrop="handleDrop(event)">
+                        <input type="file" id="p-file" onchange="uploadImg(this)" accept="image/*" multiple>
+                        <div class="file-upload-label" id="drop-label">
+                            <i class="ri-upload-cloud-2-line" style="font-size:24px;"></i>
+                            <span><b>点击选择</b> 或 <b>将多张图片拖拽至此处</b></span>
                         </div>
                     </div>
                     <div id="p-img-list" class="img-list"></div>
@@ -878,6 +890,7 @@
             <button class="btn-secondary" onclick="batchHotProd(true)" style="color:#ef4444; border-color:#fecaca;"><i class="ri-fire-fill"></i> 批量设为热销</button>
             <button class="btn-secondary" onclick="batchHotProd(false)"><i class="ri-fire-line"></i> 取消热销</button>
             <button class="btn-secondary" onclick="openHotProdModal()" style="color:var(--warning); border-color:#fde68a;"><i class="ri-fire-fill"></i> 管理当前热销</button>
+<button class="btn-secondary" onclick="batchSetSubCategory()" style="color:var(--primary); border-color:var(--border-focus);"><i class="ri-node-tree"></i> 批量设置二级分类</button>
         </div>
         <div class="card" style="padding:0; overflow:hidden;">
             <div style="padding:20px 24px; border-bottom:1px solid var(--border-color); display:flex; gap:12px; align-items:center;">
@@ -2069,17 +2082,35 @@ async function saveCategorySort(btn) {
 function openProdModal()  { resetProdForm(); document.getElementById('prod-modal').style.display = 'flex'; }
 function closeProdModal() { document.getElementById('prod-modal').style.display = 'none'; resetProdForm(); }
  
-function updateCatSelect(selected = '') {
-    const sel   = document.getElementById('p-cat-select');
-    const input = document.getElementById('p-cat-new');
-    const cats  = curData?.products ? [...new Set(curData.products.map(p => p.category))] : [];
-    let html = '<option value="" disabled selected>选择现有分类...</option>';
-    cats.forEach(c => { html += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`; });
-    html += '<option value="__NEW__" style="color:var(--primary); font-weight:600;">+ 创建新分类...</option>';
-    sel.innerHTML = html;
-    if (selected && cats.includes(selected)) { sel.value = selected; input.style.display = 'none'; input.value = ''; }
-    else if (selected) { sel.value = '__NEW__'; input.style.display = 'block'; input.value = selected; }
-    else { sel.value = ''; input.style.display = 'none'; input.value = ''; }
+function updateCatSelect(selected = '', selectedSub = '') {
+    const sel   = document.getElementById('p-cat-select');
+    const input = document.getElementById('p-cat-new');
+    const cats  = curData?.products ? [...new Set(curData.products.map(p => p.category))] : [];
+    let html = '<option value="" disabled selected>选择现有分类...</option>';
+    cats.forEach(c => { html += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`; });
+    html += '<option value="__NEW__" style="color:var(--primary); font-weight:600;">+ 创建新分类...</option>';
+    sel.innerHTML = html;
+    if (selected && cats.includes(selected)) { sel.value = selected; input.style.display = 'none'; input.value = ''; }
+    else if (selected) { sel.value = '__NEW__'; input.style.display = 'block'; input.value = selected; }
+    else { sel.value = ''; input.style.display = 'none'; input.value = ''; }
+    updateSubCatSelect(selectedSub);
+}
+
+function updateSubCatSelect(selectedSub = '') {
+    const mainCat = document.getElementById('p-cat-select').value;
+    const sel = document.getElementById('p-subcat-select');
+    const input = document.getElementById('p-subcat-new');
+    let subs = [];
+    if (mainCat && mainCat !== '__NEW__' && curData?.products) {
+        subs = [...new Set(curData.products.filter(p => p.category === mainCat && p.sub_category).map(p => p.sub_category))];
+    }
+    let html = '<option value="">无二级分类</option>';
+    subs.forEach(s => { html += `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`; });
+    html += '<option value="__NEW__" style="color:var(--primary); font-weight:600;">+ 创建新二级分类...</option>';
+    sel.innerHTML = html;
+    if (selectedSub && subs.includes(selectedSub)) { sel.value = selectedSub; input.style.display = 'none'; input.value = ''; }
+    else if (selectedSub) { sel.value = '__NEW__'; input.style.display = 'block'; input.value = selectedSub; }
+    else { sel.value = ''; input.style.display = 'none'; input.value = ''; }
 }
  
 function editProd(pid) {
@@ -2090,11 +2121,11 @@ function editProd(pid) {
     document.getElementById('p-id').value    = p.id;
     document.getElementById('p-name').value  = p.name;
     document.getElementById('p-price').value = p.price;
-    document.getElementById('p-type').value  = p.type || 'virtual';
-    document.getElementById('p-desc').value  = p.description || '';
-    updateCatSelect(p.category);
- 
-    try { tempImgs = p.image_url ? JSON.parse(p.image_url) : []; }
+   document.getElementById('p-type').value  = p.type || 'virtual';
+    document.getElementById('p-desc').value  = p.description || '';
+    updateCatSelect(p.category, p.sub_category);
+ 
+    try { tempImgs = p.image_url ? JSON.parse(p.image_url) : []; }
     catch (e) { tempImgs = p.image_url ? [p.image_url] : []; }
  
     try { tempVariants = p.variants ? (typeof p.variants === 'string' ? JSON.parse(p.variants) : p.variants) : []; }
@@ -2113,10 +2144,38 @@ function resetProdForm() {
     document.getElementById('p-price').value = '';
     document.getElementById('p-type').value  = 'virtual';
     document.getElementById('p-desc').value  = '';
-    updateCatSelect('');
+    
+    // 新增：渲染描述记忆按钮
+    const descHistory = JSON.parse(localStorage.getItem('nexus_desc_history') || '[]');
+    const historyHtml = descHistory.length > 0 
+        ? '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;"><span style="font-size:11px; color:var(--text-muted); width:100%;">常用描述 (点击填入):</span>' + 
+          descHistory.map(d => `<button class="tag" style="cursor:pointer; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:1px solid var(--border-focus);" onclick="document.getElementById('p-desc').value=decodeURIComponent('${encodeURIComponent(d)}'); event.preventDefault();">${escapeHtml(d.substring(0,15))}...</button>`).join('') + '</div>'
+        : '';
+    
+    let historyContainer = document.getElementById('desc-history-box');
+    if(!historyContainer) {
+        historyContainer = document.createElement('div');
+        historyContainer.id = 'desc-history-box';
+        document.getElementById('p-desc').after(historyContainer);
+    }
+    historyContainer.innerHTML = historyHtml;
+
+    updateCatSelect('', '');
     tempImgs = []; tempVariants = [];
     renderImgPreviews(); renderVariants();
     document.getElementById('btn-save-prod').innerHTML = '保存商品';
+}
+
+// 新增：拖拽多图处理函数
+async function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('drop-zone').style.borderColor = '#9ca3af';
+    document.getElementById('drop-zone').style.background = '#ffffff';
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    for (const file of files) {
+        const fakeInput = { files: [file], parentElement: document.getElementById('drop-zone') };
+        await uploadImg(fakeInput);
+    }
 }
  
 function renderVariants() {
@@ -2261,42 +2320,105 @@ async function batchCancelHotFromModal() {
     document.getElementById('check-all-hot-prods').checked = false; // 取消后重置全选框
 }
 /* ================== 新增结束 ================== */
+async function batchSetSubCategory() {
+    const ids = Array.from(document.querySelectorAll('.prod-checkbox:checked')).map(cb => cb.value);
+    if (ids.length === 0) { showNotification('提示', '请先勾选商品', 'warning'); return; }
+
+    const cats = [...new Set(curData.products.map(p => p.category))];
+    let catOptions = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+
+    const { value: formValues } = await Swal.fire({
+        title: '批量设置分类',
+        html: `
+            <div style="text-align:left; font-size:13px; color:var(--text-secondary); margin-bottom:8px;">选择主分类</div>
+            <select id="batch-main-cat" class="swal2-input" style="margin-top:0;" onchange="window.updateBatchSubTips(this.value)">${catOptions}</select>
+            <div style="text-align:left; font-size:13px; color:var(--text-secondary); margin-top:15px; margin-bottom:8px;">输入二级分类 (或点击下方已有)</div>
+            <input id="batch-sub-cat" class="swal2-input" style="margin-top:0;" placeholder="例如：卫衣">
+            <div id="existing-subs-tips" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:5px;"></div>
+        `,
+        didOpen: () => {
+            // 定义一个临时全局函数处理联动显示
+            window.updateBatchSubTips = (mainVal) => {
+                const tipsBox = document.getElementById('existing-subs-tips');
+                const subInput = document.getElementById('batch-sub-cat');
+                const existingSubs = [...new Set(curData.products.filter(p => p.category === mainVal && p.sub_category).map(p => p.sub_category))];
+                tipsBox.innerHTML = existingSubs.map(s => `<span class="tag" style="cursor:pointer; background:var(--primary-light); color:var(--primary);" onclick="document.getElementById('batch-sub-cat').value='${s}'">${s}</span>`).join('');
+            };
+            window.updateBatchSubTips(document.getElementById('batch-main-cat').value);
+        },
+        showCancelButton: true,
+        confirmButtonText: '确定修改',
+        preConfirm: () => {
+            return {
+                category: document.getElementById('batch-main-cat').value,
+                subCategory: document.getElementById('batch-sub-cat').value.trim()
+            }
+        }
+    });
+
+    if (formValues) {
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/product/batch-subcategory`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ ids, ...formValues }),
+            });
+            const d = await res.json();
+            if (d.success) {
+                showNotification('成功', `已批量更新 ${ids.length} 个商品`, 'success');
+                loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
+                document.getElementById('check-all-prods').checked = false;
+            }
+        } catch (e) { showNotification('错误', '批量操作失败', 'danger'); }
+    }
+}
 
 async function saveProd(btn) {
     const id     = document.getElementById('p-id').value;
     const method = id ? 'PUT' : 'POST';
     const url    = id ? `${API_BASE}/api/admin/product/${id}` : `${API_BASE}/api/admin/product`;
  
-    const name      = document.getElementById('p-name').value.trim();
-    const price     = document.getElementById('p-price').value.trim();
-    const catSelect = document.getElementById('p-cat-select').value;
-    const category  = catSelect === '__NEW__'
-        ? document.getElementById('p-cat-new').value.trim()
-        : catSelect;
- 
-    if (!name || !price || !category) { showNotification('警告', '请填写必填项', 'warning'); return; }
- 
-    const validVariants = tempVariants.filter(v => v.name.trim() !== '' && v.price !== '');
-    const originalHTML  = btn.innerHTML;
-    btn.disabled = true; btn.innerHTML = '<div class="loader"></div> 保存中...';
- 
-    try {
-        const response = await fetch(url, {
-            method, headers: getAuthHeaders(),
-            body: JSON.stringify({
-                name, price, category,
-                desc:      document.getElementById('p-desc').value.trim(),
+    const name      = document.getElementById('p-name').value.trim();
+    const price     = document.getElementById('p-price').value.trim();
+    const catSelect = document.getElementById('p-cat-select').value;
+    const category  = catSelect === '__NEW__'
+        ? document.getElementById('p-cat-new').value.trim()
+        : catSelect;
+    const subCatSelect = document.getElementById('p-subcat-select').value;
+    const subCategory = subCatSelect === '__NEW__' 
+        ? document.getElementById('p-subcat-new').value.trim() 
+        : subCatSelect;
+ 
+    if (!name || !price || !category) { showNotification('警告', '请填写必填项', 'warning'); return; }
+ 
+    const validVariants = tempVariants.filter(v => v.name.trim() !== '' && v.price !== '');
+    const originalHTML  = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<div class="loader"></div> 保存中...';
+ 
+    try {
+        const response = await fetch(url, {
+            method, headers: getAuthHeaders(),
+            body: JSON.stringify({
+                name, price, category, subCategory,
+                desc:      document.getElementById('p-desc').value.trim(),
                 type:      document.getElementById('p-type').value,
                 imageUrl:  JSON.stringify(tempImgs),
                 variants:  JSON.stringify(validVariants),
             }),
         });
         const result = await response.json();
-        if (response.ok && result.success) {
-            showNotification('成功', '商品保存成功', 'success');
-            closeProdModal();
-            loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
-        } else {
+       if (response.ok && result.success) {
+            // 新增：记忆当前描述
+            const currentDesc = document.getElementById('p-desc').value.trim();
+            if (currentDesc) {
+                let history = JSON.parse(localStorage.getItem('nexus_desc_history') || '[]');
+                history = [currentDesc, ...history.filter(h => h !== currentDesc)].slice(0, 5);
+                localStorage.setItem('nexus_desc_history', JSON.stringify(history));
+            }
+            showNotification('成功', '商品保存成功', 'success');
+            closeProdModal();
+            loadProductsPage(currentProductPage, currentProductCategoryFilter, true);
+        }else {
             showNotification('错误', result.error || '保存失败', 'danger');
         }
     } catch (e) {
