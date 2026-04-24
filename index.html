@@ -622,6 +622,28 @@
             justify-content: center; font-size: 14px; transition: var(--transition);
         }
         .hire-del:hover { background: #fee2e2; color: var(--danger); }
+
+        /* ============================================================
+           聊天优化 — 乐观更新状态 & 手机端虚拟键盘修复
+        ============================================================ */
+        .msg-bubble.msg-sending { opacity: 0.55; }
+        .msg-bubble.msg-failed  { opacity: 0.85; }
+        .msg-failed-label {
+            font-size: 11px; color: var(--danger);
+            margin-right: 6px; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 3px;
+        }
+        .msg-status-clock { font-size: 10px; color: var(--text-muted); margin-right: 4px; }
+        @media (max-width: 768px) {
+            /* 使用 dvh 让聊天区域正确计算虚拟键盘高度 */
+            .chat-container.active {
+                height: 100dvh !important;
+            }
+            .chat-input-container {
+                /* 修复 iOS 安全区 + 虚拟键盘 */
+                padding-bottom: max(16px, env(safe-area-inset-bottom));
+            }
+        }
     </style>
     <link rel="manifest" href="manifest.json">
     <meta name="mobile-web-app-capable" content="yes">
@@ -1039,7 +1061,7 @@
                         <i class="ri-image-add-line" style="font-size:20px;"></i>
                     </button>
                     <input id="reply-in" type="text" style="flex:1;" placeholder="输入回复内容..."
-                           onkeypress="if(event.key==='Enter') reply(this)">
+                           onkeypress="if(event.key==='Enter') reply(this)" enterkeyhint="send" autocomplete="off" autocorrect="off" autocapitalize="sentences">
                     <button class="btn-soft"
                             style="width:40px; height:40px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); margin-right:4px;"
                             title="快捷回复" onclick="showQuickReplies()">
@@ -1114,16 +1136,6 @@ function showNotification(title, message, type = 'info', onClickCallback = null)
         </button>
     `;
 
-async function sendQuickReplyDirectly(text) {
-    if (!curChat) return;
-    Swal.close();
-    const input = document.getElementById('reply-in');
-    const oldVal = input.value;
-    input.value = text;
-    await reply(document.getElementById('chat-send-btn'));
-    if (!oldVal) input.value = '';
-    else input.value = oldVal;
-}
     if (onClickCallback) {
         notification.style.cursor = 'pointer';
         notification.onclick = (e) => {
@@ -1148,12 +1160,12 @@ async function sendQuickReplyDirectly(text) {
         showNotification('提示', '请先选择一个会话再发送', 'warning');
         return;
     }
-    Swal.close(); // 先关闭快捷语弹窗
-    const input = document.getElementById('reply-in');
-    input.value = text; // 自动填充文字
-    // 找到发送按钮并调用现有的 reply 函数执行发送逻辑
-    const sendBtn = document.getElementById('chat-send-btn');
-    await reply(sendBtn);
+    Swal.close();
+    const sessionId = curChat;
+    const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    _appendOptimisticMessage(tempId, text, 'text', sessionId);
+    pendingAdminMsgs.set(tempId, { sessionId, content: text, msgType: 'text' });
+    _sendMessageToServer(tempId, sessionId, text, 'text');
 }
 
 function showQuickReplies() {
@@ -1230,6 +1242,9 @@ let sortableInstance = null;
 let deferredAdminPrompt = null;
  
 let adminToken = localStorage.getItem('adminToken');
+
+// 乐观更新：正在发送中的消息追踪 Map<tempId, {sessionId, content, msgType}>
+const pendingAdminMsgs = new Map();
  
 /* ================================================================
    ③ Socket.io 连接
@@ -2952,11 +2967,23 @@ function setChatSourceFilter(el) {
  * 原名 openChatPanel（清晰命名，同时保留 openChat 作为外部入口）
  */
 function openChatPanel(sid) {
-    curChat = sid;
-    document.getElementById('chat-wrapper').classList.add('active');
-    if (window.innerWidth <= 768) {
-        document.body.style.overflow = 'hidden';
-    }
+    // 清理上一会话的 scroll 监听，防止内存泄漏
+    const prevBox = document.getElementById('chat-box');
+    if (prevBox) prevBox.onscroll = null;
+
+    // chatMessageCache 超过 5 条时删除最旧的，控制内存
+    const cacheKeys = Object.keys(chatMessageCache);
+    if (cacheKeys.length > 5) {
+        cacheKeys.slice(0, cacheKeys.length - 5).forEach(k => {
+            if (k !== sid) delete chatMessageCache[k];
+        });
+    }
+
+    curChat = sid;
+    document.getElementById('chat-wrapper').classList.add('active');
+    if (window.innerWidth <= 768) {
+        document.body.style.overflow = 'hidden';
+    }
  
     const isHR   = sid.startsWith('hr_');
     const rawUid = _getRawUid(sid);
@@ -3085,15 +3112,8 @@ function renderChatMessagesFromData(messages, sessionId) {
         </div>`;
     }).join('');
     
-    // 确保立刻滚动，并增加延时补偿图片加载撑开的高度
-    box.scrollTop = box.scrollHeight;
-    setTimeout(() => { box.scrollTop = box.scrollHeight; }, 150);
-    setTimeout(() => { box.scrollTop = box.scrollHeight; }, 500);
-    
-    // 监听所有加载中的图片，一旦加载完成再次滚动到底部
-    box.querySelectorAll('img').forEach(img => {
-        img.onload = () => { box.scrollTop = box.scrollHeight; };
-    });
+    // 精准滚动（含图片异步加载补偿）
+    _scrollToBottom(box);
 }
 
 function appendChatMessages(messages, prepend = false) {
@@ -3129,7 +3149,7 @@ function appendChatMessages(messages, prepend = false) {
         box.scrollTop = box.scrollHeight - oldScrollHeight;
     } else {
         box.appendChild(fragment);
-        box.scrollTop = box.scrollHeight;
+        _scrollToBottom(box);
     }
 }
 
@@ -3202,52 +3222,253 @@ function renderMessages(sid) {
     setTimeout(() => { box.scrollTop = box.scrollHeight; }, 50);
 }
  
-/** 发送回复 */
-/** 发送回复 */
-   async function reply(btn) {
-        if (!curChat) { showNotification('提示', '请先选择会话', 'warning'); return; }
-        const input = document.getElementById('reply-in');
-        const t = input.value.trim();
-        if (!t) return;
+/** 发送回复（乐观更新版 — Telegram 风格）*/
+async function reply(btn) {
+    if (!curChat) { showNotification('提示', '请先选择会话', 'warning'); return; }
+    const input = document.getElementById('reply-in');
+    const t = input.value.trim();
+    if (!t) return;
 
-        const sendBtn = document.getElementById('chat-send-btn');
-        sendBtn.disabled = true; 
-        sendBtn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
-        
-        const originalText = t; // 备份一下，万一失败了要还给用户
-        input.value = '';
+    const sessionId = curChat;  // 闭包捕获，防止切换会话时错误
+    const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
 
-        try {
-            const res = await fetch(`${API_BASE}/api/admin/reply`, {
-                method: 'POST', headers: getAuthHeaders(),
-                body: JSON.stringify({ sessionId: curChat, text: t }),
-            });
-            const d = await res.json();
-            
-            if (!d.success) {
-                showNotification('错误', d.msg || '发送失败', 'danger');
-                input.value = originalText; 
-            }
-            // 注意：这里不再写 appendChatMessages，交给下面的 socket.on('new_message') 统一处理
-        } catch (e) { 
-            showNotification('错误', '发送失败', 'danger'); 
-            input.value = originalText;
-        }
-        finally { 
-            sendBtn.disabled = false; 
-            sendBtn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>'; 
-            input.focus();
-        }
-    }
+    // ① 立刻清空输入框，立刻恢复焦点，不阻塞 UI
+    input.value = '';
+    input.focus();
+
+    // ② 立刻在聊天框插入乐观气泡（透明度降低表示"发送中"）
+    _appendOptimisticMessage(tempId, t, 'text', sessionId);
+
+    // ③ 记录待确认消息
+    pendingAdminMsgs.set(tempId, { sessionId, content: t, msgType: 'text' });
+
+    // ④ 后台静默发送，不阻塞 UI
+    _sendMessageToServer(tempId, sessionId, t, 'text');
+}
 
 async function sendDirectReply(text) {
     if (!curChat) return;
     try {
-                await fetch(`${API_BASE}/api/admin/reply`, {
+        await fetch(`${API_BASE}/api/admin/reply`, {
             method: 'POST', headers: getAuthHeaders(),
             body: JSON.stringify({ sessionId: curChat, text }),
         });
     } catch (e) { showNotification('错误', '发送失败', 'danger'); }
+}
+
+/* ================================================================
+   聊天辅助函数 — 乐观更新相关
+================================================================ */
+
+/**
+ * 构建消息气泡 HTML（不含撤回/状态，供 socket 确认后更新）
+ */
+function _buildMsgHTML(m, sid) {
+    const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isMe = m.sender === 'admin';
+    if (m.msg_type === 'system') {
+        return `<div style="text-align:center; font-size:11px; color:var(--text-muted); margin:8px 0;">${escapeHtml(m.content)}</div>`;
+    }
+    const isImage = m.msg_type === 'image'
+        || (typeof m.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(m.content))
+        || (typeof m.content === 'string' && m.content.includes('cloudinary.com'));
+    let contentHtml;
+    if (isImage) {
+        const safeUrl = escapeHtml(m.content);
+        contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="viewImageFullscreen('${safeUrl}')">`;
+    } else {
+        contentHtml = escapeHtml(m.content);
+    }
+    const readStatus = isMe ? (m.is_read ? '<span style="color:var(--success); margin-right:8px;">已读</span>' : '<span style="color:var(--text-muted); margin-right:8px;">未读</span>') : '';
+    const recallBtn = isMe ? `<span onclick="recallMsg(${m.id}, '${escapeHtml(sid)}')" style="cursor:pointer; color:var(--danger); margin-right:8px;"><i class="ri-arrow-go-back-line"></i> 撤回</span>` : '';
+    return `
+    <div class="msg-row ${isMe ? 'admin' : 'user'}" data-msgid="${m.id}">
+        <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
+            <div class="msg-bubble" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
+            <div class="msg-time">${recallBtn}${readStatus}${time}</div>
+        </div>
+    </div>`;
+}
+
+/**
+ * 精准滚动到底部（兼容图片异步加载）
+ */
+function _scrollToBottom(box) {
+    requestAnimationFrame(() => {
+        box.scrollTop = box.scrollHeight;
+        // 再等图片加载完毕后再滚一次
+        const imgs = box.querySelectorAll('img:not([data-scroll-bound])');
+        imgs.forEach(img => {
+            img.setAttribute('data-scroll-bound', '1');
+            img.addEventListener('load', () => { box.scrollTop = box.scrollHeight; }, { once: true });
+        });
+    });
+}
+
+/**
+ * 乐观插入管理员消息气泡（透明度 0.55 表示"发送中"）
+ */
+function _appendOptimisticMessage(tempId, content, msgType, sessionId) {
+    const box = document.getElementById('chat-box');
+    if (!box || curChat !== sessionId) return;
+
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isImage = msgType === 'image';
+
+    let contentHtml;
+    if (isImage) {
+        const safeUrl = escapeHtml(content);
+        contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in; opacity:0.7;">`;
+    } else {
+        contentHtml = escapeHtml(content);
+    }
+
+    const div = document.createElement('div');
+    div.className = 'msg-row admin';
+    div.setAttribute('data-tempid', tempId);
+    div.innerHTML = `
+    <div style="display:flex; flex-direction:column; max-width:85%; align-items:flex-end;">
+        <div class="msg-bubble msg-sending" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
+        <div class="msg-time">
+            <span class="msg-status-clock"><i class="ri-time-line"></i></span>
+            ${time}
+        </div>
+    </div>`;
+
+    box.appendChild(div);
+    _scrollToBottom(box);
+
+    // 同步更新左侧会话列表预览（不触发任何网络请求）
+    updateChatItemPreview(sessionId, {
+        content: isImage ? '[图片]' : content,
+        msg_type: msgType,
+        created_at: new Date().toISOString(),
+        sender: 'admin',
+    });
+}
+
+/**
+ * 将乐观气泡升级为"已确认"状态
+ * @param {string} tempId    临时 ID
+ * @param {object} confirmed 服务器返回的真实消息对象
+ * @param {string} sid       会话 ID
+ */
+function _confirmOptimisticMessage(tempId, confirmed, sid) {
+    const tempEl = document.querySelector(`[data-tempid="${tempId}"]`);
+    if (!tempEl) return;
+
+    // 升级 data 属性
+    tempEl.setAttribute('data-msgid', confirmed.id);
+    tempEl.removeAttribute('data-tempid');
+
+    // 移除"发送中"半透明样式
+    const bubble = tempEl.querySelector('.msg-bubble');
+    if (bubble) bubble.classList.remove('msg-sending');
+
+    // 更新时间行（加入撤回按钮 + 未读标记）
+    const timeEl = tempEl.querySelector('.msg-time');
+    if (timeEl) {
+        const time = new Date(confirmed.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        timeEl.innerHTML = `
+            <span onclick="recallMsg(${confirmed.id}, '${escapeHtml(sid)}')"
+                  style="cursor:pointer; color:var(--danger); margin-right:8px;">
+                <i class="ri-arrow-go-back-line"></i> 撤回
+            </span>
+            <span style="color:var(--text-muted); margin-right:8px;">未读</span>
+            ${time}`;
+    }
+}
+
+/**
+ * 将乐观气泡标记为"发送失败"
+ */
+function _markMessageFailed(tempId) {
+    const el = document.querySelector(`[data-tempid="${tempId}"]`);
+    if (!el) return;
+    const bubble = el.querySelector('.msg-bubble');
+    if (bubble) {
+        bubble.classList.remove('msg-sending');
+        bubble.classList.add('msg-failed');
+    }
+    const timeEl = el.querySelector('.msg-time');
+    if (timeEl) {
+        // 保留时间，添加失败提示与重试入口
+        const pending = pendingAdminMsgs.get(tempId);
+        const retryHandler = pending
+            ? `onclick="_retryMessage('${tempId}')"`
+            : '';
+        timeEl.insertAdjacentHTML('afterbegin',
+            `<span class="msg-failed-label" ${retryHandler}><i class="ri-error-warning-line"></i> 发送失败，点击重试</span>`
+        );
+    }
+}
+
+/**
+ * 重试失败消息
+ */
+function _retryMessage(tempId) {
+    const el = document.querySelector(`[data-tempid="${tempId}"]`);
+    if (!el) return;
+    const bubble = el.querySelector('.msg-bubble');
+    if (bubble) {
+        bubble.classList.remove('msg-failed');
+        bubble.classList.add('msg-sending');
+    }
+    const failLabel = el.querySelector('.msg-failed-label');
+    if (failLabel) failLabel.remove();
+    const timeEl = el.querySelector('.msg-time');
+    if (timeEl) {
+        timeEl.insertAdjacentHTML('afterbegin',
+            `<span class="msg-status-clock"><i class="ri-time-line"></i></span>`
+        );
+    }
+    // 重新加入 pending 并重试
+    const pending = pendingAdminMsgs.get(tempId);
+    if (!pending) { el.remove(); return; }
+    pendingAdminMsgs.set(tempId, pending);
+    _sendMessageToServer(tempId, pending.sessionId, pending.content, pending.msgType);
+}
+
+/**
+ * 后台静默发送消息到服务器（带自动重试，最多 2 次）
+ */
+async function _sendMessageToServer(tempId, sessionId, text, msgType = 'text', retries = 0) {
+    const MAX_RETRIES = 2;
+    try {
+        const body = { sessionId, text };
+        if (msgType === 'image') body.msgType = 'image';
+        const res = await fetch(`${API_BASE}/api/admin/reply`, {
+            method: 'POST', headers: getAuthHeaders(),
+            body: JSON.stringify(body),
+        });
+        const d = await res.json();
+        if (d.success) {
+            // 成功：等 socket 回调来做 _confirmOptimisticMessage
+            // （如果 socket 1s 内没回来，执行兜底确认）
+            setTimeout(() => {
+                const el = document.querySelector(`[data-tempid="${tempId}"]`);
+                if (el) {
+                    // socket 可能没回来，直接静默确认
+                    const bubble = el.querySelector('.msg-bubble');
+                    if (bubble) bubble.classList.remove('msg-sending');
+                    const clock = el.querySelector('.msg-status-clock');
+                    if (clock) clock.remove();
+                    pendingAdminMsgs.delete(tempId);
+                }
+            }, 1500);
+        } else {
+            throw new Error(d.msg || '服务端拒绝');
+        }
+    } catch (e) {
+        if (retries < MAX_RETRIES) {
+            // 指数退避重试
+            await new Promise(r => setTimeout(r, 600 * (retries + 1)));
+            return _sendMessageToServer(tempId, sessionId, text, msgType, retries + 1);
+        } else {
+            _markMessageFailed(tempId);
+            pendingAdminMsgs.delete(tempId);
+        }
+    }
 }
 
 async function sendAdminChatImage(input) {
@@ -3257,29 +3478,58 @@ async function sendAdminChatImage(input) {
     if (!file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i)) { showNotification('错误', '仅支持图片', 'danger'); input.value = ''; return; }
     if (file.size > 5 * 1024 * 1024) { showNotification('错误', '图片不能超过5MB', 'danger'); input.value = ''; return; }
 
-    const formData = new FormData(); formData.append('file', file);
-    const sendBtn  = document.getElementById('chat-send-btn');
-    sendBtn.disabled = true; sendBtn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px;"></div>';
+    const sessionId = curChat;
+    input.value = '';
+
+    // 先用 FileReader 生成本地预览 URL，立刻插入乐观气泡
+    const localUrl = await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.readAsDataURL(file);
+    });
+
+    const tempId = 'temp_img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    _appendOptimisticMessage(tempId, localUrl, 'image', sessionId);
+    pendingAdminMsgs.set(tempId, { sessionId, content: null /* 上传后才知道真实 URL */, msgType: 'image', localUrl });
+
+    const sendBtn = document.getElementById('chat-send-btn');
+    const origBtnHtml = sendBtn.innerHTML;
+    sendBtn.innerHTML = '<div class="loader" style="width:14px; height:14px; border-width:2px; border-top-color:white;"></div>';
 
     try {
+        const formData = new FormData(); formData.append('file', file);
         const res = await fetch(`${API_BASE}/api/upload`, {
             method: 'POST', headers: { 'Authorization': adminToken }, body: formData,
         });
         const d = await res.json();
         if (d.success) {
-            const replyRes = await fetch(`${API_BASE}/api/admin/reply`, {
-                method: 'POST', headers: getAuthHeaders(),
-                body: JSON.stringify({ sessionId: curChat, text: d.url, msgType: 'image' }),
-            });
-            const replyData = await replyRes.json();
-            if (!replyData.success) {
-                showNotification('错误', '图片消息发送失败', 'danger');
+            // 更新 pending 记录中的真实 URL，以便 socket 回调时能匹配
+            const pending = pendingAdminMsgs.get(tempId);
+            if (pending) pending.content = d.url;
+
+           // 同步更新乐观气泡的 src 为真实 CDN 地址（防止本地 blob 失效）
+            const tempEl = document.querySelector(`[data-tempid="${tempId}"]`);
+            if (tempEl) {
+                const img = tempEl.querySelector('img');
+                if (img) img.src = escapeHtml(d.url);
             }
-        } else { showNotification('错误', d.error || '上传失败', 'danger'); }
-    } catch (e) { showNotification('错误', '网络故障', 'danger'); }
-    finally {
-        input.value = '';
-        sendBtn.disabled = false; sendBtn.innerHTML = '<i class="ri-send-plane-fill" style="font-size:18px;"></i>';
+
+            await fetch(`${API_BASE}/api/admin/reply`, {
+                method: 'POST', headers: getAuthHeaders(),
+                body: JSON.stringify({ sessionId, text: d.url, msgType: 'image' }),
+            });
+            // socket new_message 回调会确认气泡
+        } else {
+            _markMessageFailed(tempId);
+            pendingAdminMsgs.delete(tempId);
+            showNotification('错误', d.error || '上传失败', 'danger');
+        }
+    } catch (e) {
+        _markMessageFailed(tempId);
+        pendingAdminMsgs.delete(tempId);
+        showNotification('错误', '网络故障', 'danger');
+    } finally {
+        sendBtn.innerHTML = origBtnHtml;
     }
 }
  
@@ -3583,17 +3833,19 @@ socket.on('message_recalled', (data) => {
 });
  
 socket.on('new_message', (data) => {
-    // 兼容处理：确保 session_id 存在，防止新用户消息因后端字段名不一致(sessionId)导致崩溃，从而阻断通知弹窗
+    /* ── 0. 兼容性：统一字段名 ── */
     data.session_id = data.session_id || data.sessionId;
 
-    if (document.querySelector(`[data-msgid="${data.id}"]`)) return;
-    // 更新内存缓存（用于会话列表预览）
+    /* ── 1. 防 socket 重放：同一消息 ID 不重复渲染 ── */
+    if (data.id && document.querySelector(`[data-msgid="${data.id}"]`)) return;
+
+    /* ── 2. 更新内存缓存 ── */
     if (!curData.chats) curData.chats = {};
     if (!curData.chats[data.session_id]) curData.chats[data.session_id] = [];
     if (!curData.chats[data.session_id].some(m => m.id == data.id)) {
         curData.chats[data.session_id].push(data);
     }
-if (chatMessageCache[data.session_id] && chatMessageCache[data.session_id].messages) {
+    if (chatMessageCache[data.session_id]?.messages) {
         if (!chatMessageCache[data.session_id].messages.some(m => m.id == data.id)) {
             chatMessageCache[data.session_id].messages.push(data);
             chatMessageCache[data.session_id].offset += 1;
@@ -3602,104 +3854,135 @@ if (chatMessageCache[data.session_id] && chatMessageCache[data.session_id].messa
 
     const isChatPageActive = document.getElementById('chat').classList.contains('active');
 
-  // 如果当前正好打开该会话，直接追加消息，不重新渲染全部
-        if (isChatPageActive && curChat === data.session_id) {
-             // 直接追加到聊天框（不重新拉取）
-            const box = document.getElementById('chat-box');
-            const time = new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const isMe = data.sender === 'admin';
-            if (data.msg_type === 'system') {
-                const sysDiv = document.createElement('div');
-                sysDiv.style.cssText = 'text-align:center; font-size:11px; color:var(--text-muted); margin:8px 0;';
-                sysDiv.textContent = data.content || '';
-                box.appendChild(sysDiv);
-                box.scrollTop = box.scrollHeight;
-            } else {
-                const isImage = data.msg_type === 'image' || (typeof data.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(data.content)) || (typeof data.content === 'string' && data.content.includes('cloudinary.com'));
-                let contentHtml;
-                if (isImage) {
-            const safeUrl = escapeHtml(data.content);
-            contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="viewImageFullscreen('${safeUrl}')">`;
-        } else {
-            contentHtml = escapeHtml(data.content || '');
-        }
-                const div = document.createElement('div');
-                div.className = `msg-row ${isMe ? 'admin' : 'user'}`;
-                div.innerHTML = `
-                <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
-                    <div class="msg-bubble" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
-                    <div class="msg-time">
-                        ${isMe ? `<span onclick="recallMsg(${data.id}, '${escapeHtml(data.session_id)}')" style="cursor:pointer; color:var(--danger); margin-right:8px;"><i class="ri-arrow-go-back-line"></i> 撤回</span><span style="color:var(--text-muted); margin-right:8px;">未读</span>` : ''}
-                        ${time}
-                    </div>
-                </div>`;
-                box.appendChild(div);
-                box.scrollTop = box.scrollHeight;
-            }
-            // 标记已读（若为用户消息）
-            if (!isMe) {
-                fetch(`${API_BASE}/api/admin/chat/read`, {
-                    method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ sessionId: data.session_id }),
-                }).catch(() => {});
-            }
-            // 无论谁发的消息，都更新会话列表中的预览
-            updateChatItemPreview(data.session_id, data);
-            updateBadge();
-            return; // 关键：不再执行后续的 loadChatSessions 全量刷新
-        }
+    /* ── 3. 如果当前正好打开该会话 ── */
+    if (isChatPageActive && curChat === data.session_id) {
+        const isMe = data.sender === 'admin';
 
-       // 非当前会话，更新会话列表（渲染预览、增加红点）
-        const chatItemExists = document.querySelector(`.chat-item[data-sid="${data.session_id}"]`);
-        if (chatItemExists) {
-            updateChatItemPreview(data.session_id, data);
-            if (data.sender === 'user') {
-                let badge = chatItemExists.querySelector('.nav-badge');
-                if (!badge) {
-                    badge = document.createElement('span');
-                    badge.className = 'nav-badge';
-                    badge.style.display = 'inline-block';
-                    badge.innerText = '0';
-                    const previewContainer = chatItemExists.querySelector('.chat-info > div:nth-child(2)');
-                    if (previewContainer) previewContainer.appendChild(badge);
+        /* ── 3a. 乐观消息去重：admin 消息优先尝试与 pending 气泡匹配 ── */
+        if (isMe) {
+            let matchedTempId = null;
+            for (const [tempId, pending] of pendingAdminMsgs.entries()) {
+                if (pending.sessionId === data.session_id) {
+                    // 文本消息：内容匹配
+                    const contentMatch = pending.msgType !== 'image'
+                        ? pending.content === data.content
+                        : (pending.content === data.content || pending.localUrl != null);
+                    if (contentMatch) { matchedTempId = tempId; break; }
                 }
-                badge.innerText = parseInt(badge.innerText || 0) + 1;
-                badge.style.display = 'inline-block';
             }
-        } else {
-            const container = document.getElementById('chat-users');
-            const emptyTip = container.querySelector('div[style*="text-align:center"]');
-            if (emptyTip) container.innerHTML = '';
-           renderChatSessionItems([{
-                        session_id: data.session_id,
-                        display_uid: data.session_id.replace('hr_', '').replace('user_', ''),
-                        last_message_preview: data.content,
-                        msg_type: data.msg_type,
-                        last_message_time: data.created_at,
-                        sender: data.sender,
-                        source: data.source,
-                        unread_count: 1
-                    }], false);
-                    updateChatItemPreview(data.session_id, data);
-                }
+            if (matchedTempId) {
+                /* 找到匹配的乐观气泡：升级为已确认 */
+                _confirmOptimisticMessage(matchedTempId, data, data.session_id);
+                pendingAdminMsgs.delete(matchedTempId);
+                updateChatItemPreview(data.session_id, data);
                 updateBadge();
-
-        // 发送通知（仅用户消息，只要不是正在跟该用户聊天就弹窗，无视静音设置）
-        if (data.sender === 'user' && curChat !== data.session_id) {
-            let rawUid = data.session_id.replace('hr_', '').replace('user_', '').replace('guest_', '访客_');
-            let source = data.source || '';
-            const userObj = (curData.users || []).find(u => String(u.id) === String(rawUid));
-            if (userObj && userObj.source) source = String(userObj.source);
-            const bossName = String(source).includes('8888') ? '龍哥' : 'Boss';
-            const isHR = data.session_id.startsWith('hr_');
-            const typeStr = isHR ? '直聘咨询' : '商城咨询';
-            showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info', () => {
-                nav('chat');
-                setTimeout(() => {
-                    const chatItem = document.querySelector(`.chat-item[data-sid="${data.session_id}"]`);
-                    if (chatItem) chatItem.click();
-                }, 300);
-            });
+                return; // ← 不再二次 DOM 插入
+            }
         }
+
+        /* ── 3b. 系统消息 ── */
+        const box = document.getElementById('chat-box');
+        if (data.msg_type === 'system') {
+            const sysDiv = document.createElement('div');
+            sysDiv.style.cssText = 'text-align:center; font-size:11px; color:var(--text-muted); margin:8px 0;';
+            sysDiv.textContent = data.content || '';
+            box.appendChild(sysDiv);
+            _scrollToBottom(box);
+        } else {
+            /* ── 3c. 正常消息：精准 DOM 追加 ── */
+            const time = new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const isImage = data.msg_type === 'image'
+                || (typeof data.content === 'string' && /\.(jpeg|jpg|gif|png|webp)$/i.test(data.content))
+                || (typeof data.content === 'string' && data.content.includes('cloudinary.com'));
+
+            let contentHtml;
+            if (isImage) {
+                const safeUrl = escapeHtml(data.content);
+                contentHtml = `<img src="${safeUrl}" style="max-width:100%; border-radius:8px; cursor:zoom-in;" onclick="viewImageFullscreen('${safeUrl}')">`;
+            } else {
+                contentHtml = escapeHtml(data.content || '');
+            }
+
+            const div = document.createElement('div');
+            div.className = `msg-row ${isMe ? 'admin' : 'user'}`;
+            if (data.id) div.setAttribute('data-msgid', data.id);
+            div.innerHTML = `
+            <div style="display:flex; flex-direction:column; max-width:85%; ${isMe ? 'align-items:flex-end;' : 'align-items:flex-start;'}">
+                <div class="msg-bubble" style="${isImage ? 'background:transparent; padding:0; border:none;' : ''}">${contentHtml}</div>
+                <div class="msg-time">
+                    ${isMe ? `<span onclick="recallMsg(${data.id}, '${escapeHtml(data.session_id)}')" style="cursor:pointer; color:var(--danger); margin-right:8px;"><i class="ri-arrow-go-back-line"></i> 撤回</span><span style="color:var(--text-muted); margin-right:8px;">未读</span>` : ''}
+                    ${time}
+                </div>
+            </div>`;
+            box.appendChild(div);
+            _scrollToBottom(box);
+        }
+
+        /* ── 3d. 标记已读 & 更新预览 ── */
+        if (!isMe) {
+            fetch(`${API_BASE}/api/admin/chat/read`, {
+                method: 'POST', headers: getAuthHeaders(),
+                body: JSON.stringify({ sessionId: data.session_id }),
+            }).catch(() => {});
+        }
+        updateChatItemPreview(data.session_id, data);
+        updateBadge();
+        return; // 不继续执行后续非当前会话逻辑
+    }
+
+    /* ── 4. 非当前会话：仅静默更新左侧列表预览 + 红点 ── */
+    const chatItemExists = document.querySelector(`.chat-item[data-sid="${data.session_id}"]`);
+    if (chatItemExists) {
+        updateChatItemPreview(data.session_id, data);
+        if (data.sender === 'user') {
+            let badge = chatItemExists.querySelector('.nav-badge');
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'nav-badge';
+                badge.style.display = 'inline-block';
+                badge.innerText = '0';
+                const previewContainer = chatItemExists.querySelector('.chat-info > div:nth-child(2)');
+                if (previewContainer) previewContainer.appendChild(badge);
+            }
+            badge.innerText = parseInt(badge.innerText || 0) + 1;
+            badge.style.display = 'inline-block';
+        }
+    } else {
+        // 全新会话：插入到列表顶部
+        const container = document.getElementById('chat-users');
+        const emptyTip = container.querySelector('div[style*="text-align:center"]');
+        if (emptyTip) container.innerHTML = '';
+        renderChatSessionItems([{
+            session_id: data.session_id,
+            display_uid: data.session_id.replace('hr_', '').replace('user_', ''),
+            last_message_preview: data.content,
+            msg_type: data.msg_type,
+            last_message_time: data.created_at,
+            sender: data.sender,
+            source: data.source,
+            unread_count: 1,
+        }], false);
+        updateChatItemPreview(data.session_id, data);
+    }
+    updateBadge();
+
+    /* ── 5. 桌面通知（仅用户消息 & 非当前会话）── */
+    if (data.sender === 'user' && curChat !== data.session_id) {
+        let rawUid = data.session_id.replace('hr_', '').replace('user_', '').replace('guest_', '访客_');
+        let source = data.source || '';
+        const userObj = (curData.users || []).find(u => String(u.id) === String(rawUid));
+        if (userObj && userObj.source) source = String(userObj.source);
+        const bossName = String(source).includes('8888') ? '龍哥' : 'Boss';
+        const isHR = data.session_id.startsWith('hr_');
+        const typeStr = isHR ? '直聘咨询' : '商城咨询';
+        showNotification('新消息', `[${bossName}] 收到新的${typeStr}`, 'info', () => {
+            nav('chat');
+            setTimeout(() => {
+                const chatItem = document.querySelector(`.chat-item[data-sid="${data.session_id}"]`);
+                if (chatItem) chatItem.click();
+            }, 300);
+        });
+    }
 });
 
 // 新增局部更新会话列表项预览
@@ -3848,6 +4131,23 @@ if (chatPanel) {
     chatPanel.addEventListener('touchend',   (e) => {
         if (e.changedTouches[0].screenX - touchStartX > 50) closeChatMobile();
     }, { passive: true });
+}
+
+/* ── iOS/Android 虚拟键盘弹出时自动滚到底部 ── */
+if (window.visualViewport) {
+    let lastVVHeight = window.visualViewport.height;
+    window.visualViewport.addEventListener('resize', () => {
+        const newH = window.visualViewport.height;
+        const diff = lastVVHeight - newH;
+        lastVVHeight = newH;
+        // 键盘弹出（视口缩小）：滚到底部
+        if (diff > 100 && curChat) {
+            requestAnimationFrame(() => {
+                const box = document.getElementById('chat-box');
+                if (box) box.scrollTop = box.scrollHeight;
+            });
+        }
+    });
 }
 </script>
 </body>
